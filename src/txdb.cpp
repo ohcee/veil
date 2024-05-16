@@ -534,17 +534,30 @@ CZerocoinDB::CZerocoinDB(size_t nCacheSize, bool fMemory, bool fWipe) : CDBWrapp
 //TODO: add prefixes for zerocoindb to the top of the file insteadof using chars when doing database operations
 bool CZerocoinDB::WriteCoinMintBatch(const std::map<libzerocoin::PublicCoin, uint256>& mintInfo)
 {
-    CDBBatch batch(*this);
-    size_t count = 0;
-    for (auto it=mintInfo.begin(); it != mintInfo.end(); it++) {
-        libzerocoin::PublicCoin pubCoin = it->first;
-        uint256 hash = GetPubCoinHash(pubCoin.getValue());
-        batch.Write(std::make_pair('m', hash), it->second);
-        ++count;
+    const size_t FLUSH_SIZE = 1000; // Define the flush threshold for the cache
+    auto it = mintInfo.begin(); // Iterator to loop through the mintInfo map
+    size_t count = 0; // Counter to keep track of the number of processed entries
+
+    while (it != mintInfo.end()) {
+        CDBBatch batch(*this); // Create a new batch for database writing
+
+        // Process and add entries to the batch until the flush size is reached
+        for (size_t i = 0; i < FLUSH_SIZE && it != mintInfo.end(); ++i, ++it) {
+            libzerocoin::PublicCoin pubCoin = it->first; // Get the public coin
+            uint256 hash = GetPubCoinHash(pubCoin.getValue()); // Get the hash of the public coin value
+            batch.Write(std::make_pair('m', hash), it->second); // Write the entry to the batch
+            ++count; // Increment the count of processed entries
+        }
+
+        // Write the batch to the database
+        if (!WriteBatch(batch, true)) {
+            return false; // Return false if the write operation fails
+        }
+
+        LogPrint(BCLog::ZEROCOINDB, "Flushed %u coin mints to db.\n", (unsigned int)count); // Log the flush operation
     }
 
-    LogPrint(BCLog::ZEROCOINDB, "Writing %u coin mints to db.\n", (unsigned int)count);
-    return WriteBatch(batch, true);
+    return true; // Return true if all entries are successfully written to the database
 }
 
 bool CZerocoinDB::ReadCoinMint(const CBigNum& bnPubcoin, uint256& hashTx)
@@ -565,19 +578,32 @@ bool CZerocoinDB::EraseCoinMint(const CBigNum& bnPubcoin)
 
 bool CZerocoinDB::WriteCoinSpendBatch(const std::map<libzerocoin::CoinSpend, uint256>& spendInfo)
 {
-    CDBBatch batch(*this);
-    size_t count = 0;
-    for (auto it=spendInfo.begin(); it != spendInfo.end(); it++) {
-        CBigNum bnSerial = it->first.getCoinSerialNumber();
-        CDataStream ss(SER_GETHASH, 0);
-        ss << bnSerial;
-        uint256 hash = Hash(ss.begin(), ss.end());
-        batch.Write(std::make_pair('s', hash), it->second);
-        ++count;
+    const size_t FLUSH_SIZE = 1000; // Define the flush threshold for the cache
+    auto it = spendInfo.begin(); // Iterator to loop through the spendInfo map
+    size_t count = 0; // Counter to keep track of the number of processed entries
+
+    while (it != spendInfo.end()) {
+        CDBBatch batch(*this); // Create a new batch for database writing
+
+        // Process and add entries to the batch until the flush size is reached
+        for (size_t i = 0; i < FLUSH_SIZE && it != spendInfo.end(); ++i, ++it) {
+            CBigNum bnSerial = it->first.getCoinSerialNumber(); // Get the coin serial number
+            CDataStream ss(SER_GETHASH, 0); // Create a data stream for hashing
+            ss << bnSerial; // Serialize the serial number into the data stream
+            uint256 hash = Hash(ss.begin(), ss.end()); // Compute the hash of the serialized data
+            batch.Write(std::make_pair('s', hash), it->second); // Write the entry to the batch
+            ++count; // Increment the count of processed entries
+        }
+
+        // Write the batch to the database
+        if (!WriteBatch(batch, true)) {
+            return false; // Return false if the write operation fails
+        }
+
+        LogPrint(BCLog::ZEROCOINDB, "Flushed %u coin spends to db.\n", (unsigned int)count); // Log the flush operation
     }
 
-    LogPrint(BCLog::ZEROCOINDB, "Writing %u coin spends to db.\n", (unsigned int)count);
-    return WriteBatch(batch, true);
+    return true; // Return true if all entries are successfully written to the database
 }
 
 bool CZerocoinDB::ReadCoinSpend(const CBigNum& bnSerial, uint256& txHash)
@@ -605,13 +631,30 @@ bool CZerocoinDB::EraseCoinSpend(const CBigNum& bnSerial)
 
 bool CZerocoinDB::WritePubcoinSpendBatch(std::map<uint256, uint256>& mapPubcoinSpends, const uint256& hashBlock)
 {
-    CDBBatch batch(*this);
-    for (const auto& pair : mapPubcoinSpends) {
-        const uint256& hashPubcoin = pair.first;
-        const uint256& txid = pair.second;
-        batch.Write(std::make_pair('l', hashPubcoin), std::make_pair(txid, hashBlock));
+    const size_t FLUSH_SIZE = 1000; // Define the flush threshold for the cache
+    auto it = mapPubcoinSpends.begin(); // Iterator to loop through the mapPubcoinSpends map
+    size_t count = 0; // Counter to keep track of the number of processed entries
+
+    while (it != mapPubcoinSpends.end()) {
+        CDBBatch batch(*this); // Create a new batch for database writing
+
+        // Process and add entries to the batch until the flush size is reached
+        for (size_t i = 0; i < FLUSH_SIZE && it != mapPubcoinSpends.end(); ++i, ++it) {
+            const uint256& hashPubcoin = it->first; // Get the hash of the public coin
+            const uint256& txid = it->second; // Get the transaction ID
+            batch.Write(std::make_pair('l', hashPubcoin), std::make_pair(txid, hashBlock)); // Write the entry to the batch
+            ++count; // Increment the count of processed entries
+        }
+
+        // Write the batch to the database
+        if (!WriteBatch(batch, true)) {
+            return false; // Return false if the write operation fails
+        }
+
+        LogPrint(BCLog::ZEROCOINDB, "Flushed %u pubcoin spends to db.\n", (unsigned int)count); // Log the flush operation
     }
-    return WriteBatch(batch, true);
+
+    return true; // Return true if all entries are successfully written to the database
 }
 
 bool CZerocoinDB::ReadPubcoinSpend(const uint256& hashPubcoin, uint256& txHash, uint256& hashBlock)
