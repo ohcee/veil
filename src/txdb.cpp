@@ -538,11 +538,13 @@ bool CZerocoinDB::WriteCoinMintBatch(const std::map<libzerocoin::PublicCoin, uin
     auto it = mintInfo.begin(); // Iterator to loop through the mintInfo map
     size_t count = 0; // Counter to keep track of the number of processed entries
 
-    while (it != mintInfo.end()) {
+    while (it != mintInfo.end()) 
+    {
         CDBBatch batch(*this); // Create a new batch for database writing
 
         // Process and add entries to the batch until the flush size is reached
-        for (size_t i = 0; i < FLUSH_SIZE && it != mintInfo.end(); ++i, ++it) {
+        for (size_t i = 0; i < FLUSH_SIZE && it != mintInfo.end(); ++i, ++it) 
+        {
             libzerocoin::PublicCoin pubCoin = it->first; // Get the public coin
             uint256 hash = GetPubCoinHash(pubCoin.getValue()); // Get the hash of the public coin value
             batch.Write(std::make_pair('m', hash), it->second); // Write the entry to the batch
@@ -550,7 +552,8 @@ bool CZerocoinDB::WriteCoinMintBatch(const std::map<libzerocoin::PublicCoin, uin
         }
 
         // Write the batch to the database
-        if (!WriteBatch(batch, true)) {
+        if (!WriteBatch(batch, true)) 
+        {
             return false; // Return false if the write operation fails
         }
 
@@ -582,11 +585,13 @@ bool CZerocoinDB::WriteCoinSpendBatch(const std::map<libzerocoin::CoinSpend, uin
     auto it = spendInfo.begin(); // Iterator to loop through the spendInfo map
     size_t count = 0; // Counter to keep track of the number of processed entries
 
-    while (it != spendInfo.end()) {
+    while (it != spendInfo.end()) 
+    {
         CDBBatch batch(*this); // Create a new batch for database writing
 
         // Process and add entries to the batch until the flush size is reached
-        for (size_t i = 0; i < FLUSH_SIZE && it != spendInfo.end(); ++i, ++it) {
+        for (size_t i = 0; i < FLUSH_SIZE && it != spendInfo.end(); ++i, ++it) 
+        {
             CBigNum bnSerial = it->first.getCoinSerialNumber(); // Get the coin serial number
             CDataStream ss(SER_GETHASH, 0); // Create a data stream for hashing
             ss << bnSerial; // Serialize the serial number into the data stream
@@ -596,7 +601,8 @@ bool CZerocoinDB::WriteCoinSpendBatch(const std::map<libzerocoin::CoinSpend, uin
         }
 
         // Write the batch to the database
-        if (!WriteBatch(batch, true)) {
+        if (!WriteBatch(batch, true)) 
+        {
             return false; // Return false if the write operation fails
         }
 
@@ -635,11 +641,13 @@ bool CZerocoinDB::WritePubcoinSpendBatch(std::map<uint256, uint256>& mapPubcoinS
     auto it = mapPubcoinSpends.begin(); // Iterator to loop through the mapPubcoinSpends map
     size_t count = 0; // Counter to keep track of the number of processed entries
 
-    while (it != mapPubcoinSpends.end()) {
+    while (it != mapPubcoinSpends.end()) 
+    {
         CDBBatch batch(*this); // Create a new batch for database writing
 
         // Process and add entries to the batch until the flush size is reached
-        for (size_t i = 0; i < FLUSH_SIZE && it != mapPubcoinSpends.end(); ++i, ++it) {
+        for (size_t i = 0; i < FLUSH_SIZE && it != mapPubcoinSpends.end(); ++i, ++it) 
+        {
             const uint256& hashPubcoin = it->first; // Get the hash of the public coin
             const uint256& txid = it->second; // Get the transaction ID
             batch.Write(std::make_pair('l', hashPubcoin), std::make_pair(txid, hashBlock)); // Write the entry to the batch
@@ -647,7 +655,8 @@ bool CZerocoinDB::WritePubcoinSpendBatch(std::map<uint256, uint256>& mapPubcoinS
         }
 
         // Write the batch to the database
-        if (!WriteBatch(batch, true)) {
+        if (!WriteBatch(batch, true)) 
+        {
             return false; // Return false if the write operation fails
         }
 
