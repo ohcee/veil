@@ -534,7 +534,7 @@ CZerocoinDB::CZerocoinDB(size_t nCacheSize, bool fMemory, bool fWipe) : CDBWrapp
 //TODO: add prefixes for zerocoindb to the top of the file insteadof using chars when doing database operations
 bool CZerocoinDB::WriteCoinMintBatch(const std::map<libzerocoin::PublicCoin, uint256>& mintInfo)
 {
-    const size_t FLUSH_SIZE = 10000; // Define the flush threshold for the cache
+    const size_t FLUSH_SIZE = 2500; // Define the flush threshold for the cache
     auto it = mintInfo.begin(); // Iterator to loop through the mintInfo map
     size_t count = 0; // Counter to keep track of the number of processed entries
 
@@ -581,7 +581,7 @@ bool CZerocoinDB::EraseCoinMint(const CBigNum& bnPubcoin)
 
 bool CZerocoinDB::WriteCoinSpendBatch(const std::map<libzerocoin::CoinSpend, uint256>& spendInfo)
 {
-    const size_t FLUSH_SIZE = 10000; // Define the flush threshold for the cache
+    const size_t FLUSH_SIZE = 2500; // Define the flush threshold for the cache
     auto it = spendInfo.begin(); // Iterator to loop through the spendInfo map
     size_t count = 0; // Counter to keep track of the number of processed entries
 
@@ -637,7 +637,7 @@ bool CZerocoinDB::EraseCoinSpend(const CBigNum& bnSerial)
 
 bool CZerocoinDB::WritePubcoinSpendBatch(std::map<uint256, uint256>& mapPubcoinSpends, const uint256& hashBlock)
 {
-    const size_t FLUSH_SIZE = 10000; // Define the flush threshold for the cache
+    const size_t FLUSH_SIZE = 2500; // Define the flush threshold for the cache
     auto it = mapPubcoinSpends.begin(); // Iterator to loop through the mapPubcoinSpends map
     size_t count = 0; // Counter to keep track of the number of processed entries
 
