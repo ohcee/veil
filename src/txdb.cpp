@@ -546,7 +546,7 @@ bool CZerocoinDB::WriteCoinMintBatch(const std::map<libzerocoin::PublicCoin, uin
         // Add items to the batch until FLUSH_SIZE is reached or the end of the map is reached
         for (size_t i = 0; i < FLUSH_SIZE && it != mintInfo.end(); ++i, ++it) 
         {
-            const libzerocoin::PublicCoin& pubCoin = it->first; // Get the public coin
+            libzerocoin::PublicCoin pubCoin = it->first; // Get the public coin
             uint256 hash = GetPubCoinHash(pubCoin.getValue()); // Calculate the hash of the coin's value
             batch.Write(std::make_pair('m', hash), it->second); // Write the hash and associated data to the batch
             ++count; // Increment the counter
@@ -601,13 +601,12 @@ bool CZerocoinDB::WriteCoinSpendBatch(const std::map<libzerocoin::CoinSpend, uin
         // Add items to the batch until FLUSH_SIZE is reached or the end of the map is reached
         for (size_t i = 0; i < FLUSH_SIZE && it != spendInfo.end(); ++i, ++it) 
         {
-            const CBigNum& bnSerial = it->first.getCoinSerialNumber(); // Get the serial number of the coin
-            CDataStream ss(SER_GETHASH, 0);
-            ss.reserve(bnSerial.size()); // Reserve space in the stream to avoid reallocations
-            ss << bnSerial; // Serialize the serial number
-            uint256 hash = Hash(ss.begin(), ss.end()); // Calculate the hash of the serialized data
-            batch.Write(std::make_pair('s', hash), it->second); // Write the hash and associated data to the batch
-            ++count; // Increment the counter
+            CBigNum bnSerial = it->first.getCoinSerialNumber(); // Get the coin serial number
+            CDataStream ss(SER_GETHASH, 0); // Create a data stream for hashing
+            ss << bnSerial; // Serialize the serial number into the data stream
+            uint256 hash = Hash(ss.begin(), ss.end()); // Compute the hash of the serialized data
+            batch.Write(std::make_pair('s', hash), it->second); // Write the entry to the batch
+            ++count; // Increment the count of processed entries
         }
 
         // Write the batch to the database
