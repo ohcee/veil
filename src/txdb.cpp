@@ -534,7 +534,7 @@ CZerocoinDB::CZerocoinDB(size_t nCacheSize, bool fMemory, bool fWipe) : CDBWrapp
 //TODO: add prefixes for zerocoindb to the top of the file insteadof using chars when doing database operations
 bool CZerocoinDB::WriteCoinMintBatch(const std::map<libzerocoin::PublicCoin, uint256>& mintInfo)
 {
-    const size_t FLUSH_SIZE = 100000; // Define the size of each batch for flushing
+    const size_t FLUSH_SIZE = 50; // Define the size of each batch for flushing
     auto it = mintInfo.begin(); // Iterator for traversing the map
     size_t count = 0; // Counter to keep track of the number of items processed
 
@@ -589,7 +589,7 @@ bool CZerocoinDB::EraseCoinMint(const CBigNum& bnPubcoin)
 
 bool CZerocoinDB::WriteCoinSpendBatch(const std::map<libzerocoin::CoinSpend, uint256>& spendInfo)
 {
-    const size_t FLUSH_SIZE = 100000; // Define the size of each batch for flushing
+    const size_t FLUSH_SIZE = 50; // Define the size of each batch for flushing
     auto it = spendInfo.begin(); // Iterator for traversing the map
     size_t count = 0; // Counter to keep track of the number of items processed
 
@@ -653,7 +653,7 @@ bool CZerocoinDB::EraseCoinSpend(const CBigNum& bnSerial)
 
 bool CZerocoinDB::WritePubcoinSpendBatch(std::map<uint256, uint256>& mapPubcoinSpends, const uint256& hashBlock)
 {
-    const size_t FLUSH_SIZE = 100000; // Define the size of each batch for flushing
+    const size_t FLUSH_SIZE = 50; // Define the size of each batch for flushing
     auto it = mapPubcoinSpends.begin(); // Iterator for traversing the map
     size_t count = 0; // Counter to keep track of the number of items processed
 
