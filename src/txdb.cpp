@@ -131,7 +131,7 @@ bool CCoinsViewDB::BatchWrite(CCoinsMap &mapCoins, const uint256 &hashBlock) {
         count++;
         CCoinsMap::iterator itOld = it++;
         mapCoins.erase(itOld);
-        if (batch.SizeEstimate() > batch_size) {
+        if (batch.SizeEstimate() > FLUSH_SIZE) {
             LogPrint(BCLog::COINDB, "Writing partial batch of %.2f MiB\n", batch.SizeEstimate() * (1.0 / 1048576.0));
             db.WriteBatch(batch);
             batch.Clear();
@@ -561,15 +561,11 @@ bool CZerocoinDB::WriteCoinMintBatch(const std::map<libzerocoin::PublicCoin, uin
             return false; // If writing the batch fails, return false
         }
 
-        // Log the flush operation every 10 flushes to reduce logging overhead
-        if (count % (FLUSH_SIZE * 10) == 0) 
-        {
-            LogPrint(BCLog::ZEROCOINDB, "Flushed %u coin mints to db.\n", (unsigned int)count);
-        }
+        LogPrint(BCLog::ZEROCOINDB, "Flushed %u coin mints to db.\n", totalBytes / 1048576.0);
     }
 
     // Log the total number of coin mints written to the database
-    LogPrint(BCLog::ZEROCOINDB, "Total coin mints written to db: %u\n", (unsigned int)count);
+    LogPrint(BCLog::ZEROCOINDB, "Total coin mints written to db: %u\n", totalBytes / 1048576.0);
     return true; // Return true indicating success
 }
 
@@ -620,15 +616,12 @@ bool CZerocoinDB::WriteCoinSpendBatch(const std::map<libzerocoin::CoinSpend, uin
             return false; // If writing the batch fails, return false
         }
 
-        // Log the flush operation every 10 flushes to reduce logging overhead
-        if (count % (FLUSH_SIZE * 10) == 0) 
-        {
-            LogPrint(BCLog::ZEROCOINDB, "Flushed %u coin spends to db.\n", (unsigned int)count);
-        }
+        LogPrint(BCLog::ZEROCOINDB, "Flushed %u coin spends to db.\n", totalBytes / 1048576.0);
+        
     }
 
     // Log the total number of coin spends written to the database
-    LogPrint(BCLog::ZEROCOINDB, "Total coin spends written to db: %u\n", (unsigned int)count);
+    LogPrint(BCLog::ZEROCOINDB, "Total coin spends written to db: %u\n", totalBytes / 1048576.0);
     return true; // Return true indicating success
 }
 
@@ -684,15 +677,11 @@ bool CZerocoinDB::WritePubcoinSpendBatch(std::map<uint256, uint256>& mapPubcoinS
             return false; // If writing the batch fails, return false
         }
 
-        // Log the flush operation every 10 flushes to reduce logging overhead
-        if (count % (FLUSH_SIZE * 10) == 0) 
-        {
-            LogPrint(BCLog::ZEROCOINDB, "Flushed %u pubcoin spends to db.\n", (unsigned int)count);
-        }
+        LogPrint(BCLog::ZEROCOINDB, "Flushed %u pubcoin spends to db.\n", totalBytes / 1048576.0);
     }
 
     // Log the total number of pubcoin spends written to the database
-    LogPrint(BCLog::ZEROCOINDB, "Total pubcoin spends written to db: %u\n", (unsigned int)count);
+    LogPrint(BCLog::ZEROCOINDB, "Total pubcoin spends written to db: %u\n", totalBytes / 1048576.0);
     return true; // Return true indicating success
 }
 
