@@ -97,7 +97,7 @@ bool CCoinsViewDB::BatchWrite(CCoinsMap &mapCoins, const uint256 &hashBlock) {
     CDBBatch batch(db);
     size_t count = 0;
     size_t changed = 0;
-    //size_t batch_size = (size_t)gArgs.GetArg("-dbbatchsize", nDefaultDbBatchSize);
+    const size_t FLUSH_SIZE = (size_t)gArgs.GetArg("-dbbatchsize", nDefaultDbBatchSize);
     size_t batch_size = 100663296;// set batch size to 96 MB
     int crash_simulate = gArgs.GetArg("-dbcrashratio", 0);
     assert(!hashBlock.IsNull());
