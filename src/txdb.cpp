@@ -97,8 +97,8 @@ bool CCoinsViewDB::BatchWrite(CCoinsMap &mapCoins, const uint256 &hashBlock) {
     CDBBatch batch(db);
     size_t count = 0;
     size_t changed = 0;
-    size_t batch_size = (size_t)gArgs.GetArg("-dbbatchsize", nDefaultDbBatchSize);
-    //size_t batch_size = 33554432;// set batch size to 32 MB
+    //size_t batch_size = (size_t)gArgs.GetArg("-dbbatchsize", nDefaultDbBatchSize);
+    size_t batch_size = 100663296;// set batch size to 96 MB
     int crash_simulate = gArgs.GetArg("-dbcrashratio", 0);
     assert(!hashBlock.IsNull());
 
@@ -535,9 +535,9 @@ CZerocoinDB::CZerocoinDB(size_t nCacheSize, bool fMemory, bool fWipe) : CDBWrapp
 //TODO: add prefixes for zerocoindb to the top of the file insteadof using chars when doing database operations
 bool CZerocoinDB::WriteCoinMintBatch(const std::map<libzerocoin::PublicCoin, uint256>& mintInfo)
 {
-    const size_t FLUSH_SIZE = 268435456; // batch size set 128 MB
+    const size_t FLUSH_SIZE = 100663296; // batch size set 96 MB
     auto it = mintInfo.begin(); // Iterator for traversing the map
-    size_t count = 0; // Counter to keep track of the number of items processed
+    size_t totalBytes = 0; // total bytes written so far
 
     // Loop through the entire map
     while (it != mintInfo.end()) 
@@ -545,13 +545,15 @@ bool CZerocoinDB::WriteCoinMintBatch(const std::map<libzerocoin::PublicCoin, uin
         CDBBatch batch(*this); // Create a new batch for each iteration
 
         // Add items to the batch until FLUSH_SIZE is reached or the end of the map is reached
-        for (size_t i = 0; i < FLUSH_SIZE && it != mintInfo.end(); ++i, ++it) 
+        while (it != mintInfo.end() && batch.SizeEstimate() < FLUSH_SIZE) 
         {
             libzerocoin::PublicCoin pubCoin = it->first; // Get the public coin
             uint256 hash = GetPubCoinHash(pubCoin.getValue()); // Calculate the hash of the coin's value
             batch.Write(std::make_pair('m', hash), it->second); // Write the hash and associated data to the batch
-            ++count; // Increment the counter
+            ++it;
         }
+
+        totalBytes += batch.SizeEstimate(); //  Accumulating the size of the batch
 
         // Write the batch to the database
         if (!WriteBatch(batch, true)) 
@@ -590,25 +592,27 @@ bool CZerocoinDB::EraseCoinMint(const CBigNum& bnPubcoin)
 
 bool CZerocoinDB::WriteCoinSpendBatch(const std::map<libzerocoin::CoinSpend, uint256>& spendInfo)
 {
-    const size_t FLUSH_SIZE = 268435456; // set to 128 MB
+    const size_t FLUSH_SIZE = 100663296; // set to 96 MB
     auto it = spendInfo.begin(); // Iterator for traversing the map
-    size_t count = 0; // Counter to keep track of the number of items processed
-
+    size_t totalBytes = 0; // total bytes written
+    
     // Loop through the entire map
     while (it != spendInfo.end()) 
     {
         CDBBatch batch(*this); // Create a new batch for each iteration
 
         // Add items to the batch until FLUSH_SIZE is reached or the end of the map is reached
-        for (size_t i = 0; i < FLUSH_SIZE && it != spendInfo.end(); ++i, ++it) 
+        while (it != spendInfo.end() && batch.SizeEstimate() < FLUSH_SIZE)
         {
             CBigNum bnSerial = it->first.getCoinSerialNumber(); // Get the coin serial number
             CDataStream ss(SER_GETHASH, 0); // Create a data stream for hashing
             ss << bnSerial; // Serialize the serial number into the data stream
             uint256 hash = Hash(ss.begin(), ss.end()); // Compute the hash of the serialized data
             batch.Write(std::make_pair('s', hash), it->second); // Write the entry to the batch
-            ++count; // Increment the count of processed entries
+            ++it;
         }
+
+        totalBytes += batch.SizeEstimate(); // Accumulating size of batch
 
         // Write the batch to the database
         if (!WriteBatch(batch, true)) 
@@ -654,23 +658,25 @@ bool CZerocoinDB::EraseCoinSpend(const CBigNum& bnSerial)
 
 bool CZerocoinDB::WritePubcoinSpendBatch(std::map<uint256, uint256>& mapPubcoinSpends, const uint256& hashBlock)
 {
-    const size_t FLUSH_SIZE = 268435456; // Set to 128 MB
+    const size_t FLUSH_SIZE = 100663296; // Set to 96 MB
     auto it = mapPubcoinSpends.begin(); // Iterator for traversing the map
-    size_t count = 0; // Counter to keep track of the number of items processed
-
+    size_t totalBytes = 0; //total bytes written so far
+    
     // Loop through the entire map
     while (it != mapPubcoinSpends.end()) 
     {
         CDBBatch batch(*this); // Create a new batch for each iteration
 
         // Add items to the batch until FLUSH_SIZE is reached or the end of the map is reached
-        for (size_t i = 0; i < FLUSH_SIZE && it != mapPubcoinSpends.end(); ++i, ++it) 
+        while (it != mapPubcoinSpends.end() && batch.SizeEstimate() < FLUSH_SIZE)
         {
             const uint256& hashPubcoin = it->first; // Get the hash of the public coin
             const uint256& txid = it->second; // Get the associated transaction ID
             batch.Write(std::make_pair('l', hashPubcoin), std::make_pair(txid, hashBlock)); // Write the hashes to the batch
-            ++count; // Increment the counter
+            ++it;
         }
+
+        totalBytes += batch.SizeEstimate(); // 
 
         // Write the batch to the database
         if (!WriteBatch(batch, true)) 
