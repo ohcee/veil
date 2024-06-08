@@ -99,7 +99,7 @@ bool CCoinsViewDB::BatchWrite(CCoinsMap &mapCoins, const uint256 &hashBlock) {
     size_t changed = 0;
     //size_t batch_size = (size_t)gArgs.GetArg("-dbbatchsize", nDefaultDbBatchSize);
 
-    size_t batch_size = 335544320; // 320 MB
+    size_t batch_size = 1000; //number of txo's?
     int crash_simulate = gArgs.GetArg("-dbcrashratio", 0);
     assert(!hashBlock.IsNull());
 
@@ -536,7 +536,7 @@ CZerocoinDB::CZerocoinDB(size_t nCacheSize, bool fMemory, bool fWipe) : CDBWrapp
 //TODO: add prefixes for zerocoindb to the top of the file insteadof using chars when doing database operations
 bool CZerocoinDB::WriteCoinMintBatch(const std::map<libzerocoin::PublicCoin, uint256>& mintInfo)
 {
-    const size_t FLUSH_SIZE = 335544320; // 320 MB
+    const size_t FLUSH_SIZE = 1000; //number of txo's?
     auto it = mintInfo.begin(); // Iterator for traversing the map
     size_t count = 0; // Counter to keep track of the number of items processed
 
@@ -590,7 +590,7 @@ bool CZerocoinDB::EraseCoinMint(const CBigNum& bnPubcoin)
 
 bool CZerocoinDB::WriteCoinSpendBatch(const std::map<libzerocoin::CoinSpend, uint256>& spendInfo)
 {
-    const size_t FLUSH_SIZE = 335544320; // 320 MB
+    const size_t FLUSH_SIZE = 1000; //number of txo's?
     auto it = spendInfo.begin(); // Iterator for traversing the map
     size_t count = 0; // Counter to keep track of the number of items processed
 
@@ -653,7 +653,7 @@ bool CZerocoinDB::EraseCoinSpend(const CBigNum& bnSerial)
 
 bool CZerocoinDB::WritePubcoinSpendBatch(std::map<uint256, uint256>& mapPubcoinSpends, const uint256& hashBlock)
 {
-   const size_t FLUSH_SIZE = 335544320; // 320 MB
+   const size_t FLUSH_SIZE = 1000; //number of txo's?
     auto it = mapPubcoinSpends.begin(); // Iterator for traversing the map
     size_t count = 0; // Counter to keep track of the number of items processed
 
