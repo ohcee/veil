@@ -94,6 +94,8 @@ std::vector<uint256> CCoinsViewDB::GetHeadBlocks() const {
 }
 
 bool CCoinsViewDB::BatchWrite(CCoinsMap &mapCoins, const uint256 &hashBlock) {
+    LogPrint(BCLog::COINDB, "Starting BatchWrite with %u coins\n", (unsigned int)mapCoins.size());
+
     CDBBatch batch(db);
     size_t count = 0;
     size_t changed = 0;
@@ -118,22 +120,39 @@ bool CCoinsViewDB::BatchWrite(CCoinsMap &mapCoins, const uint256 &hashBlock) {
     batch.Erase(DB_BEST_BLOCK);
     batch.Write(DB_HEAD_BLOCKS, std::vector<uint256>{hashBlock, old_tip});
 
+    const size_t FLUSH_SIZE = 1000; // Set flush size to 1000
+    std::vector<std::pair<CoinEntry, Coin>> cache;
+
     for (CCoinsMap::iterator it = mapCoins.begin(); it != mapCoins.end();) {
         if (it->second.flags & CCoinsCacheEntry::DIRTY) {
             CoinEntry entry(&it->first);
-            if (it->second.coin.IsSpent())
-                batch.Erase(entry);
-            else
-                batch.Write(entry, it->second.coin);
+            if (it->second.coin.IsSpent()) {
+                cache.emplace_back(entry, Coin());
+            } else {
+                cache.emplace_back(entry, it->second.coin);
+            }
             changed++;
         }
         count++;
         CCoinsMap::iterator itOld = it++;
         mapCoins.erase(itOld);
-        if (batch.SizeEstimate() > batch_size) {
-            LogPrint(BCLog::COINDB, "Writing partial batch of %.2f MiB\n", batch.SizeEstimate() * (1.0 / 1048576.0));
-            db.WriteBatch(batch);
+
+        // Write to batch when cache reaches FLUSH_SIZE
+        if (cache.size() >= FLUSH_SIZE) {
+            LogPrint(BCLog::COINDB, "Flushing %u coin entries to batch\n", (unsigned int)cache.size());
+            for (const auto& item : cache) {
+                if (item.second.IsSpent()) {
+                    batch.Erase(item.first);
+                } else {
+                    batch.Write(item.first, item.second);
+                }
+            }
+            if (!db.WriteBatch(batch)) {
+                return false; // If writing the batch fails, return false
+            }
             batch.Clear();
+            cache.clear();
+
             if (crash_simulate) {
                 static FastRandomContext rng;
                 if (rng.randrange(crash_simulate) == 0) {
@@ -141,6 +160,21 @@ bool CCoinsViewDB::BatchWrite(CCoinsMap &mapCoins, const uint256 &hashBlock) {
                     _Exit(0);
                 }
             }
+        }
+    }
+
+    // Write remaining items in cache
+    if (!cache.empty()) {
+        LogPrint(BCLog::COINDB, "Flushing remaining %u coin entries to batch\n", (unsigned int)cache.size());
+        for (const auto& item : cache) {
+            if (item.second.IsSpent()) {
+                batch.Erase(item.first);
+            } else {
+                batch.Write(item.first, item.second);
+            }
+        }
+        if (!db.WriteBatch(batch)) {
+            return false; // If writing the batch fails, return false
         }
     }
 
@@ -153,6 +187,7 @@ bool CCoinsViewDB::BatchWrite(CCoinsMap &mapCoins, const uint256 &hashBlock) {
     LogPrint(BCLog::COINDB, "Committed %u changed transaction outputs (out of %u) to coin database...\n", (unsigned int)changed, (unsigned int)count);
     return ret;
 }
+
 
 size_t CCoinsViewDB::EstimateSize() const
 {
@@ -532,19 +567,53 @@ CZerocoinDB::CZerocoinDB(size_t nCacheSize, bool fMemory, bool fWipe) : CDBWrapp
 }
 
 //TODO: add prefixes for zerocoindb to the top of the file insteadof using chars when doing database operations
-bool CZerocoinDB::WriteCoinMintBatch(const std::map<libzerocoin::PublicCoin, uint256>& mintInfo)
-{
-    CDBBatch batch(*this);
+bool CZerocoinDB::WriteCoinMintBatch(const std::map<libzerocoin::PublicCoin, uint256>& mintInfo) {
+    LogPrint(BCLog::ZEROCOINDB, "Starting WriteCoinMintBatch with %u mints\n", (unsigned int)mintInfo.size());
+
+    const size_t FLUSH_SIZE = 1000; // Set flush size to 1000
+    std::vector<std::pair<std::pair<char, uint256>, uint256>> cache;
     size_t count = 0;
-    for (auto it=mintInfo.begin(); it != mintInfo.end(); it++) {
-        libzerocoin::PublicCoin pubCoin = it->first;
-        uint256 hash = GetPubCoinHash(pubCoin.getValue());
-        batch.Write(std::make_pair('m', hash), it->second);
-        ++count;
+
+    auto it = mintInfo.begin(); // Iterator for traversing the map
+
+    // Loop through the entire map
+    while (it != mintInfo.end()) {
+        // Add items to the cache until FLUSH_SIZE is reached or the end of the map is reached
+        for (size_t i = 0; i < FLUSH_SIZE && it != mintInfo.end(); ++i, ++it) {
+            libzerocoin::PublicCoin pubCoin = it->first; // Get the public coin
+            uint256 hash = GetPubCoinHash(pubCoin.getValue()); // Calculate the hash of the coin's value
+            cache.emplace_back(std::make_pair('m', hash), it->second); // Add to cache
+            ++count; // Increment the counter
+        }
+
+        // Write to batch when cache reaches FLUSH_SIZE
+        if (cache.size() >= FLUSH_SIZE) {
+            LogPrint(BCLog::ZEROCOINDB, "Flushing %u coin mints to batch\n", (unsigned int)cache.size());
+            CDBBatch batch(*this);
+            for (const auto& item : cache) {
+                batch.Write(item.first, item.second);
+            }
+            if (!WriteBatch(batch, true)) {
+                return false; // If writing the batch fails, return false
+            }
+            cache.clear();
+        }
     }
 
-    LogPrint(BCLog::ZEROCOINDB, "Writing %u coin mints to db.\n", (unsigned int)count);
-    return WriteBatch(batch, true);
+    // Write remaining items in cache
+    if (!cache.empty()) {
+        LogPrint(BCLog::ZEROCOINDB, "Flushing remaining %u coin mints to batch\n", (unsigned int)cache.size());
+        CDBBatch batch(*this);
+        for (const auto& item : cache) {
+            batch.Write(item.first, item.second);
+        }
+        if (!WriteBatch(batch, true)) {
+            return false; // If writing the batch fails, return false
+        }
+    }
+
+    LogPrint(BCLog::ZEROCOINDB, "Total coin mints written to db: %u\n", (unsigned int)count);
+    return true;
 }
 
 bool CZerocoinDB::ReadCoinMint(const CBigNum& bnPubcoin, uint256& hashTx)
@@ -563,21 +632,55 @@ bool CZerocoinDB::EraseCoinMint(const CBigNum& bnPubcoin)
     return Erase(std::make_pair('m', hash));
 }
 
-bool CZerocoinDB::WriteCoinSpendBatch(const std::map<libzerocoin::CoinSpend, uint256>& spendInfo)
-{
-    CDBBatch batch(*this);
+bool CZerocoinDB::WriteCoinSpendBatch(const std::map<libzerocoin::CoinSpend, uint256>& spendInfo) {
+    LogPrint(BCLog::ZEROCOINDB, "Starting WriteCoinSpendBatch with %u spends\n", (unsigned int)spendInfo.size());
+
+    const size_t FLUSH_SIZE = 1000; // Set flush size to 1000
+    std::vector<std::pair<std::pair<char, uint256>, uint256>> cache;
     size_t count = 0;
-    for (auto it=spendInfo.begin(); it != spendInfo.end(); it++) {
-        CBigNum bnSerial = it->first.getCoinSerialNumber();
-        CDataStream ss(SER_GETHASH, 0);
-        ss << bnSerial;
-        uint256 hash = Hash(ss.begin(), ss.end());
-        batch.Write(std::make_pair('s', hash), it->second);
-        ++count;
+
+    auto it = spendInfo.begin(); // Iterator for traversing the map
+
+    // Loop through the entire map
+    while (it != spendInfo.end()) {
+        // Add items to the cache until FLUSH_SIZE is reached or the end of the map is reached
+        for (size_t i = 0; i < FLUSH_SIZE && it != spendInfo.end(); ++i, ++it) {
+            CBigNum bnSerial = it->first.getCoinSerialNumber(); // Get the coin serial number
+            CDataStream ss(SER_GETHASH, 0); // Create a data stream for hashing
+            ss << bnSerial; // Serialize the serial number into the data stream
+            uint256 hash = Hash(ss.begin(), ss.end()); // Compute the hash of the serialized data
+            cache.emplace_back(std::make_pair('s', hash), it->second); // Add to cache
+            ++count; // Increment the counter
+        }
+
+        // Write to batch when cache reaches FLUSH_SIZE
+        if (cache.size() >= FLUSH_SIZE) {
+            LogPrint(BCLog::ZEROCOINDB, "Flushing %u coin spends to batch\n", (unsigned int)cache.size());
+            CDBBatch batch(*this);
+            for (const auto& item : cache) {
+                batch.Write(item.first, item.second);
+            }
+            if (!WriteBatch(batch, true)) {
+                return false; // If writing the batch fails, return false
+            }
+            cache.clear();
+        }
     }
 
-    LogPrint(BCLog::ZEROCOINDB, "Writing %u coin spends to db.\n", (unsigned int)count);
-    return WriteBatch(batch, true);
+    // Write remaining items in cache
+    if (!cache.empty()) {
+        LogPrint(BCLog::ZEROCOINDB, "Flushing remaining %u coin spends to batch\n", (unsigned int)cache.size());
+        CDBBatch batch(*this);
+        for (const auto& item : cache) {
+            batch.Write(item.first, item.second);
+        }
+        if (!WriteBatch(batch, true)) {
+            return false; // If writing the batch fails, return false
+        }
+    }
+
+    LogPrint(BCLog::ZEROCOINDB, "Total coin spends written to db: %u\n", (unsigned int)count);
+    return true;
 }
 
 bool CZerocoinDB::ReadCoinSpend(const CBigNum& bnSerial, uint256& txHash)
@@ -603,15 +706,53 @@ bool CZerocoinDB::EraseCoinSpend(const CBigNum& bnSerial)
     return Erase(std::make_pair('s', hash));
 }
 
-bool CZerocoinDB::WritePubcoinSpendBatch(std::map<uint256, uint256>& mapPubcoinSpends, const uint256& hashBlock)
-{
-    CDBBatch batch(*this);
-    for (const auto& pair : mapPubcoinSpends) {
-        const uint256& hashPubcoin = pair.first;
-        const uint256& txid = pair.second;
-        batch.Write(std::make_pair('l', hashPubcoin), std::make_pair(txid, hashBlock));
+bool CZerocoinDB::WritePubcoinSpendBatch(std::map<uint256, uint256>& mapPubcoinSpends, const uint256& hashBlock) {
+    LogPrint(BCLog::ZEROCOINDB, "Starting WritePubcoinSpendBatch with %u spends\n", (unsigned int)mapPubcoinSpends.size());
+
+    const size_t FLUSH_SIZE = 1000; // Set flush size to 1000
+    std::vector<std::pair<std::pair<char, uint256>, std::pair<uint256, uint256>>> cache;
+    size_t count = 0;
+
+    auto it = mapPubcoinSpends.begin(); // Iterator for traversing the map
+
+    // Loop through the entire map
+    while (it != mapPubcoinSpends.end()) {
+        // Add items to the cache until FLUSH_SIZE is reached or the end of the map is reached
+        for (size_t i = 0; i < FLUSH_SIZE && it != mapPubcoinSpends.end(); ++i, ++it) {
+            const uint256& hashPubcoin = it->first; // Get the hash of the public coin
+            const uint256& txid = it->second; // Get the associated transaction ID
+            cache.emplace_back(std::make_pair('l', hashPubcoin), std::make_pair(txid, hashBlock)); // Add to cache
+            ++count; // Increment the counter
+        }
+
+        // Write to batch when cache reaches FLUSH_SIZE
+        if (cache.size() >= FLUSH_SIZE) {
+            LogPrint(BCLog::ZEROCOINDB, "Flushing %u pubcoin spends to batch\n", (unsigned int)cache.size());
+            CDBBatch batch(*this);
+            for (const auto& item : cache) {
+                batch.Write(item.first, item.second);
+            }
+            if (!WriteBatch(batch, true)) {
+                return false; // If writing the batch fails, return false
+            }
+            cache.clear();
+        }
     }
-    return WriteBatch(batch, true);
+
+    // Write remaining items in cache
+    if (!cache.empty()) {
+        LogPrint(BCLog::ZEROCOINDB, "Flushing remaining %u pubcoin spends to batch\n", (unsigned int)cache.size());
+        CDBBatch batch(*this);
+        for (const auto& item : cache) {
+            batch.Write(item.first, item.second);
+        }
+        if (!WriteBatch(batch, true)) {
+            return false; // If writing the batch fails, return false
+        }
+    }
+
+    LogPrint(BCLog::ZEROCOINDB, "Total pubcoin spends written to db: %u\n", (unsigned int)count);
+    return true;
 }
 
 bool CZerocoinDB::ReadPubcoinSpend(const uint256& hashPubcoin, uint256& txHash, uint256& hashBlock)
