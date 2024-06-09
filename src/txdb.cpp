@@ -94,8 +94,6 @@ std::vector<uint256> CCoinsViewDB::GetHeadBlocks() const {
 }
 
 bool CCoinsViewDB::BatchWrite(CCoinsMap &mapCoins, const uint256 &hashBlock) {
-    LogPrint(BCLog::COINDB, "Starting BatchWrite with %u coins\n", (unsigned int)mapCoins.size());
-
     CDBBatch batch(db);
     size_t count = 0;
     size_t changed = 0;
@@ -120,39 +118,22 @@ bool CCoinsViewDB::BatchWrite(CCoinsMap &mapCoins, const uint256 &hashBlock) {
     batch.Erase(DB_BEST_BLOCK);
     batch.Write(DB_HEAD_BLOCKS, std::vector<uint256>{hashBlock, old_tip});
 
-    const size_t FLUSH_SIZE = 1; // Set flush size to 1
-    std::vector<std::pair<CoinEntry, Coin>> cache;
-
     for (CCoinsMap::iterator it = mapCoins.begin(); it != mapCoins.end();) {
         if (it->second.flags & CCoinsCacheEntry::DIRTY) {
             CoinEntry entry(&it->first);
-            if (it->second.coin.IsSpent()) {
-                cache.emplace_back(entry, Coin());
-            } else {
-                cache.emplace_back(entry, it->second.coin);
-            }
+            if (it->second.coin.IsSpent())
+                batch.Erase(entry);
+            else
+                batch.Write(entry, it->second.coin);
             changed++;
         }
         count++;
         CCoinsMap::iterator itOld = it++;
         mapCoins.erase(itOld);
-
-        // Write to batch when cache reaches FLUSH_SIZE
-        if (cache.size() >= FLUSH_SIZE) {
-            LogPrint(BCLog::COINDB, "Flushing %u coin entries to batch\n", (unsigned int)cache.size());
-            for (const auto& item : cache) {
-                if (item.second.IsSpent()) {
-                    batch.Erase(item.first);
-                } else {
-                    batch.Write(item.first, item.second);
-                }
-            }
-            if (!db.WriteBatch(batch)) {
-                return false; // If writing the batch fails, return false
-            }
+        if (batch.SizeEstimate() > batch_size) {
+            LogPrint(BCLog::COINDB, "Writing partial batch of %.2f MiB\n", batch.SizeEstimate() * (1.0 / 1048576.0));
+            db.WriteBatch(batch);
             batch.Clear();
-            cache.clear();
-
             if (crash_simulate) {
                 static FastRandomContext rng;
                 if (rng.randrange(crash_simulate) == 0) {
@@ -160,21 +141,6 @@ bool CCoinsViewDB::BatchWrite(CCoinsMap &mapCoins, const uint256 &hashBlock) {
                     _Exit(0);
                 }
             }
-        }
-    }
-
-    // Write remaining items in cache
-    if (!cache.empty()) {
-        LogPrint(BCLog::COINDB, "Flushing remaining %u coin entries to batch\n", (unsigned int)cache.size());
-        for (const auto& item : cache) {
-            if (item.second.IsSpent()) {
-                batch.Erase(item.first);
-            } else {
-                batch.Write(item.first, item.second);
-            }
-        }
-        if (!db.WriteBatch(batch)) {
-            return false; // If writing the batch fails, return false
         }
     }
 
@@ -187,7 +153,6 @@ bool CCoinsViewDB::BatchWrite(CCoinsMap &mapCoins, const uint256 &hashBlock) {
     LogPrint(BCLog::COINDB, "Committed %u changed transaction outputs (out of %u) to coin database...\n", (unsigned int)changed, (unsigned int)count);
     return ret;
 }
-
 
 size_t CCoinsViewDB::EstimateSize() const
 {
