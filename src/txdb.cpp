@@ -535,7 +535,7 @@ CZerocoinDB::CZerocoinDB(size_t nCacheSize, bool fMemory, bool fWipe) : CDBWrapp
 bool CZerocoinDB::WriteCoinMintBatch(const std::map<libzerocoin::PublicCoin, uint256>& mintInfo) {
     LogPrint(BCLog::ZEROCOINDB, "Starting WriteCoinMintBatch with %u mints\n", (unsigned int)mintInfo.size());
 
-    const size_t FLUSH_SIZE = 1000; // Set flush size to 1000
+    const size_t FLUSH_SIZE = 500; // Set flush size to 500
     std::vector<std::pair<std::pair<char, uint256>, uint256>> cache;
     size_t count = 0;
 
@@ -600,7 +600,7 @@ bool CZerocoinDB::EraseCoinMint(const CBigNum& bnPubcoin)
 bool CZerocoinDB::WriteCoinSpendBatch(const std::map<libzerocoin::CoinSpend, uint256>& spendInfo) {
     LogPrint(BCLog::ZEROCOINDB, "Starting WriteCoinSpendBatch with %u spends\n", (unsigned int)spendInfo.size());
 
-    const size_t FLUSH_SIZE = 1000; // Set flush size to 1000
+    const size_t FLUSH_SIZE = 500; // Set flush size to 500
     std::vector<std::pair<std::pair<char, uint256>, uint256>> cache;
     size_t count = 0;
 
@@ -674,7 +674,7 @@ bool CZerocoinDB::EraseCoinSpend(const CBigNum& bnSerial)
 bool CZerocoinDB::WritePubcoinSpendBatch(std::map<uint256, uint256>& mapPubcoinSpends, const uint256& hashBlock) {
     LogPrint(BCLog::ZEROCOINDB, "Starting WritePubcoinSpendBatch with %u spends\n", (unsigned int)mapPubcoinSpends.size());
 
-    const size_t FLUSH_SIZE = 1000; // Set flush size to 1000
+    const size_t FLUSH_SIZE = 500; // Set flush size to 500
     std::vector<std::pair<std::pair<char, uint256>, std::pair<uint256, uint256>>> cache;
     size_t count = 0;
 
