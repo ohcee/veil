@@ -85,7 +85,7 @@ std::map<uint256, uint256> cacheSpends;
 std::map<uint256, uint256> cacheMints;
 std::map<uint256, uint256> cacheSpentPubcoins;
 
-bool FlushCacheToDatabase(const CBlockIndex* pindex, StateClass& state) {
+bool FlushCacheToDatabase(const CBlockIndex* pindex, CValidationState& state) {
     if (!pzerocoinDB->WriteCoinSpendBatch(cacheSpends)) return state.Error("Failed to record coin serials to database");
     if (!pzerocoinDB->WriteCoinMintBatch(cacheMints)) return state.Error("Failed to record new mints to database");
     if (pindex->nHeight >= Params().HeightLightZerocoin()) {
@@ -100,7 +100,7 @@ bool FlushCacheToDatabase(const CBlockIndex* pindex, StateClass& state) {
     return true;
 }
 
-bool CacheAndFlushZerocoinData(StateClass& state, const CBlockIndex* pindex, const std::map<uint256, uint256>& mapSpends, const std::map<uint256, uint256>& mapMints, const std::map<uint256, uint256>& mapSpentPubcoinsInBlock) {
+bool CacheAndFlushZerocoinData(CValidationState& state, const CBlockIndex* pindex, const std::map<uint256, uint256>& mapSpends, const std::map<uint256, uint256>& mapMints, const std::map<uint256, uint256>& mapSpentPubcoinsInBlock) {
     // Add items to cache
     cacheSpends.insert(mapSpends.begin(), mapSpends.end());
     cacheMints.insert(mapMints.begin(), mapMints.end());
