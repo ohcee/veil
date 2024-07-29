@@ -80,9 +80,9 @@
 #define MICRO 0.000001
 #define MILLI 0.001
 
-// Caches for zerocoin items
-std::map<uint256, uint256> cacheSpends;
-std::map<uint256, uint256> cacheMints;
+// Cache definitions
+std::map<libzerocoin::CoinSpend, uint256> cacheSpends;
+std::map<libzerocoin::PublicCoin, uint256> cacheMints;
 std::map<uint256, uint256> cacheSpentPubcoins;
 
 bool FlushCacheToDatabase(const CBlockIndex* pindex, CValidationState& state) {
@@ -100,7 +100,7 @@ bool FlushCacheToDatabase(const CBlockIndex* pindex, CValidationState& state) {
     return true;
 }
 
-bool CacheAndFlushZerocoinData(CValidationState& state, const CBlockIndex* pindex, const std::map<uint256, uint256>& mapSpends, const std::map<uint256, uint256>& mapMints, const std::map<uint256, uint256>& mapSpentPubcoinsInBlock) {
+bool CacheAndFlushZerocoinData(CValidationState& state, const CBlockIndex* pindex, const std::map<libzerocoin::CoinSpend, uint256>& mapSpends, const std::map<libzerocoin::PublicCoin, uint256>& mapMints, const std::map<uint256, uint256>& mapSpentPubcoinsInBlock) {
     // Add items to cache
     cacheSpends.insert(mapSpends.begin(), mapSpends.end());
     cacheMints.insert(mapMints.begin(), mapMints.end());
@@ -2948,7 +2948,8 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
 
     // Add items to cache and flush if necessary
     if (!CacheAndFlushZerocoinData(state, pindex, mapSpends, mapMints, mapSpentPubcoinsInBlock))
-        return state.Error("Failed to process zerocoin");
+    return state.Error("Failed to process zerocoin");
+
 
     int64_t nTime6 = GetTimeMicros(); nTimeDatabaseZerocoin += nTime6 - nTime5;
     LogPrint(BCLog::BENCH, "    - Writing zerocoin to database : %.2fms [%.2fs (%.2fms/blk)]\n", MILLI * (nTime6 - nTime5), nTimeDatabaseZerocoin * MICRO, nTimeDatabaseZerocoin * MILLI / nBlocksTotal);
