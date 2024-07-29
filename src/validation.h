@@ -147,6 +147,13 @@ static const bool DEFAULT_PEERBLOOMFILTERS = true;
 /** Default for -stopatheight */
 static const int DEFAULT_STOPATHEIGHT = 0;
 
+// Define the cache size threshold
+const size_t CACHE_SIZE_THRESHOLD = 100;
+
+bool CacheAndFlushZerocoinData(StateClass& state, const CBlockIndex* pindex, const std::map<uint256, uint256>& mapSpends, const std::map<uint256, uint256>& mapMints, const std::map<uint256, uint256>& mapSpentPubcoinsInBlock);
+
+bool FlushCacheToDatabase(const CBlockIndex* pindex, StateClass& state);
+
 struct BlockHasher
 {
     size_t operator()(const uint256& hash) const { return hash.GetCheapHash(); }

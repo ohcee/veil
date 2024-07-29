@@ -80,6 +80,42 @@
 #define MICRO 0.000001
 #define MILLI 0.001
 
+// Caches for zerocoin items
+std::map<uint256, uint256> cacheSpends;
+std::map<uint256, uint256> cacheMints;
+std::map<uint256, uint256> cacheSpentPubcoins;
+
+bool FlushCacheToDatabase(const CBlockIndex* pindex, StateClass& state) {
+    if (!pzerocoinDB->WriteCoinSpendBatch(cacheSpends)) return state.Error("Failed to record coin serials to database");
+    if (!pzerocoinDB->WriteCoinMintBatch(cacheMints)) return state.Error("Failed to record new mints to database");
+    if (pindex->nHeight >= Params().HeightLightZerocoin()) {
+        if (!pzerocoinDB->WritePubcoinSpendBatch(cacheSpentPubcoins, pindex->GetBlockHash()))
+            return state.Error("Failed to record new pubcoinspends to database");
+    }
+
+    // Clear caches after flushing
+    cacheSpends.clear();
+    cacheMints.clear();
+    cacheSpentPubcoins.clear();
+    return true;
+}
+
+bool CacheAndFlushZerocoinData(StateClass& state, const CBlockIndex* pindex, const std::map<uint256, uint256>& mapSpends, const std::map<uint256, uint256>& mapMints, const std::map<uint256, uint256>& mapSpentPubcoinsInBlock) {
+    // Add items to cache
+    cacheSpends.insert(mapSpends.begin(), mapSpends.end());
+    cacheMints.insert(mapMints.begin(), mapMints.end());
+    if (pindex->nHeight >= Params().HeightLightZerocoin()) {
+        cacheSpentPubcoins.insert(mapSpentPubcoinsInBlock.begin(), mapSpentPubcoinsInBlock.end());
+    }
+
+    // Check if cache size threshold is reached
+    if (cacheSpends.size() >= CACHE_SIZE_THRESHOLD || cacheMints.size() >= CACHE_SIZE_THRESHOLD || cacheSpentPubcoins.size() >= CACHE_SIZE_THRESHOLD) {
+        if (!FlushCacheToDatabase(pindex, state)) return false;
+    }
+
+    return true;
+}
+
 /**
  * Global state
  */
@@ -2910,13 +2946,9 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
     // Record zerocoin serials
     std::set<uint256> setAddedTx;
 
-    // Flush spend/mint info to disk
-    if (!pzerocoinDB->WriteCoinSpendBatch(mapSpends)) return state.Error(("Failed to record coin serials to database"));
-    if (!pzerocoinDB->WriteCoinMintBatch(mapMints)) return state.Error(("Failed to record new mints to database"));
-    if (pindex->nHeight >= Params().HeightLightZerocoin()) {
-        if (!pzerocoinDB->WritePubcoinSpendBatch(mapSpentPubcoinsInBlock, pindex->GetBlockHash()) )
-            return state.Error(("Failed to record new pubcoinspends to database"));
-    }
+    // Add items to cache and flush if necessary
+    if (!CacheAndFlushZerocoinData(state, pindex, mapSpends, mapMints, mapSpentPubcoinsInBlock))
+        return state.Error("Failed to process zerocoin");
 
     int64_t nTime6 = GetTimeMicros(); nTimeDatabaseZerocoin += nTime6 - nTime5;
     LogPrint(BCLog::BENCH, "    - Writing zerocoin to database : %.2fms [%.2fs (%.2fms/blk)]\n", MILLI * (nTime6 - nTime5), nTimeDatabaseZerocoin * MICRO, nTimeDatabaseZerocoin * MILLI / nBlocksTotal);
