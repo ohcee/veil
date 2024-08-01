@@ -148,7 +148,7 @@ static const bool DEFAULT_PEERBLOOMFILTERS = true;
 static const int DEFAULT_STOPATHEIGHT = 0;
 
 // Define the cache size threshold
-const size_t CACHE_SIZE_THRESHOLD = 20;
+const size_t CACHE_SIZE_THRESHOLD = 15;
 
 bool CacheAndFlushZerocoinData(CValidationState& state, const CBlockIndex* pindex, 
     const std::map<uint256, uint256>& mapSpends, 
