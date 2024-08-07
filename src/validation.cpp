@@ -114,7 +114,7 @@ bool CacheAndFlushZerocoinData(CValidationState& state, const CBlockIndex* pinde
     }
 
     // Check if cache size threshold is reached
-    if (cacheSpends.size() >= CACHE_SIZE_THRESHOLD || cacheMints.size() >= CACHE_SIZE_THRESHOLD || cacheSpentPubcoins.size() >= CACHE_SIZE_THRESHOLD) {
+    if (cacheSpends.size() >= CACHE_SIZE_THRESHOLD && cacheMints.size() >= CACHE_SIZE_THRESHOLD && cacheSpentPubcoins.size() >= CACHE_SIZE_THRESHOLD) {
         if (!FlushCacheToDatabase(pindex, state)) return false;
     }
     return true;
