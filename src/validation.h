@@ -221,7 +221,7 @@ static const signed int DEFAULT_CHECKBLOCKS = 6;
 static const unsigned int DEFAULT_CHECKLEVEL = 4;
 
 // Define the cache size threshold
-const size_t CACHE_SIZE_THRESHOLD = 12;
+const size_t CACHE_SIZE_THRESHOLD = 100;
 
 bool CacheAndFlushZerocoinData(CValidationState& state, const CBlockIndex* pindex, 
     const std::map<uint256, uint256>& mapSpends, 
