@@ -147,6 +147,21 @@ static const bool DEFAULT_PEERBLOOMFILTERS = true;
 /** Default for -stopatheight */
 static const int DEFAULT_STOPATHEIGHT = 0;
 
+// Define the cache size threshold
+const size_t CACHE_SIZE_THRESHOLD = 120;
+
+bool CacheAndFlushZerocoinData(CValidationState& state, const CBlockIndex* pindex, 
+    const std::map<uint256, uint256>& mapSpends, 
+    const std::map<uint256, uint256>& mapMints, 
+    const std::map<uint256, uint256>& mapSpentPubcoinsInBlock);
+
+bool FlushCacheToDatabase(const CBlockIndex* pindex, CValidationState& state);
+
+bool ProcessZerocoinData(CValidationState& state, const CBlockIndex* pindex,
+    const std::map<libzerocoin::CoinSpend, uint256>& mapSpends,
+    const std::map<libzerocoin::PublicCoin, uint256>& mapMints,
+    const std::map<uint256, uint256>& mapSpentPubcoinsInBlock);
+
 struct BlockHasher
 {
     size_t operator()(const uint256& hash) const { return hash.GetCheapHash(); }
@@ -219,21 +234,6 @@ static const unsigned int NODE_NETWORK_LIMITED_MIN_BLOCKS = 288;
 
 static const signed int DEFAULT_CHECKBLOCKS = 6;
 static const unsigned int DEFAULT_CHECKLEVEL = 4;
-
-// Define the cache size threshold
-const size_t CACHE_SIZE_THRESHOLD = 10;
-
-bool CacheAndFlushZerocoinData(CValidationState& state, const CBlockIndex* pindex, 
-    const std::map<uint256, uint256>& mapSpends, 
-    const std::map<uint256, uint256>& mapMints, 
-    const std::map<uint256, uint256>& mapSpentPubcoinsInBlock);
-
-bool FlushCacheToDatabase(const CBlockIndex* pindex, CValidationState& state);
-
-bool ProcessZerocoinData(CValidationState& state, const CBlockIndex* pindex,
-    const std::map<libzerocoin::CoinSpend, uint256>& mapSpends,
-    const std::map<libzerocoin::PublicCoin, uint256>& mapMints,
-    const std::map<uint256, uint256>& mapSpentPubcoinsInBlock);
 
 // Require that user allocate at least 550MB for block & undo files (blk???.dat and rev???.dat)
 // At 1MB per block, 288 blocks = 288MB.
