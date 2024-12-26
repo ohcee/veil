@@ -85,20 +85,28 @@ std::map<libzerocoin::CoinSpend, uint256> cacheSpends;
 std::map<libzerocoin::PublicCoin, uint256> cacheMints;
 std::map<uint256, uint256> cacheSpentPubcoins;
 
-bool FlushCacheToDatabase(const CBlockIndex* pindex, CValidationState& state) {    
+bool FlushCacheToDatabase(const CBlockIndex* pindex, CValidationState& state) {
+    LogPrint(BCLog::ZEROSPEND, "Flushing cache: Spends=%d, Mints=%d, Pubcoins=%d\n",
+             cacheSpends.size(), cacheMints.size(), cacheSpentPubcoins.size());
+
     if (!pzerocoinDB->WriteCoinSpendBatch(cacheSpends)) {
+        LogPrint(BCLog::ZEROSPEND, "Error: Failed to write coin spends to database\n");
         return state.Error("Failed to record coin serials to database");
     }
     if (!pzerocoinDB->WriteCoinMintBatch(cacheMints)) {
+        LogPrint(BCLog::ZEROSPEND, "Error: Failed to write coin mints to database\n");
         return state.Error("Failed to record new mints to database");
     }
     if (pindex->nHeight >= Params().HeightLightZerocoin()) {
         if (!pzerocoinDB->WritePubcoinSpendBatch(cacheSpentPubcoins, pindex->GetBlockHash())) {
-            return state.Error("Failed to record new pubcoinspends to database");
+            LogPrint(BCLog::ZEROSPEND, "Error: Failed to write pubcoin spends to database\n");
+            return state.Error("Failed to record new pubcoin spends to database");
         }
     }
 
-    // Clear caches after flushing
+    LogPrint(BCLog::ZEROSPEND, "Cache successfully flushed to database\n");
+
+    // Clear caches after successful flush
     cacheSpends.clear();
     cacheMints.clear();
     cacheSpentPubcoins.clear();
@@ -106,25 +114,53 @@ bool FlushCacheToDatabase(const CBlockIndex* pindex, CValidationState& state) {
     return true;
 }
 
-bool CacheAndFlushZerocoinData(CValidationState& state, const CBlockIndex* pindex, const std::map<libzerocoin::CoinSpend, uint256>& mapSpends, const std::map<libzerocoin::PublicCoin, uint256>& mapMints, const std::map<uint256, uint256>& mapSpentPubcoinsInBlock) {    
+bool CacheAndFlushZerocoinData(CValidationState& state, const CBlockIndex* pindex, const std::map<libzerocoin::CoinSpend, uint256>& mapSpends, const std::map<libzerocoin::PublicCoin, uint256>& mapMints, const std::map<uint256, uint256>& mapSpentPubcoinsInBlock) {
     cacheSpends.insert(mapSpends.begin(), mapSpends.end());
     cacheMints.insert(mapMints.begin(), mapMints.end());
     if (pindex->nHeight >= Params().HeightLightZerocoin()) {
         cacheSpentPubcoins.insert(mapSpentPubcoinsInBlock.begin(), mapSpentPubcoinsInBlock.end());
     }
 
+    // Log current cache sizes
+    LogPrint(BCLog::ZEROSPEND, "Cache Sizes - Spends: %d, Mints: %d, Pubcoins: %d\n",
+             cacheSpends.size(), cacheMints.size(), cacheSpentPubcoins.size());
+
+    // Dynamic threshold
+    size_t currentThreshold = pindex->nHeight < Params().HeightLightZerocoin() ? 60 : CACHE_SIZE_THRESHOLD;
+
     // Check if cache size threshold is reached
-    if (cacheSpends.size() >= CACHE_SIZE_THRESHOLD && cacheMints.size() >= CACHE_SIZE_THRESHOLD && cacheSpentPubcoins.size() >= CACHE_SIZE_THRESHOLD) {
-        if (!FlushCacheToDatabase(pindex, state)) return false;
+    if (cacheSpends.size() >= currentThreshold || 
+        cacheMints.size() >= currentThreshold || 
+        cacheSpentPubcoins.size() >= currentThreshold) {
+        LogPrint(BCLog::ZEROSPEND, "Cache size exceeded threshold, flushing to database\n");
+        if (!FlushCacheToDatabase(pindex, state)) {
+            LogPrint(BCLog::ZEROSPEND, "Error: Failed to flush cache\n");
+            return false;
+        }
     }
     return true;
 }
 
-bool ProcessZerocoinData(CValidationState& state, const CBlockIndex* pindex, const std::map<libzerocoin::CoinSpend, uint256>& mapSpends, const std::map<libzerocoin::PublicCoin, uint256>& mapMints, const std::map<uint256, uint256>& mapSpentPubcoinsInBlock) {    
-    if (!CacheAndFlushZerocoinData(state, pindex, mapSpends, mapMints, mapSpentPubcoinsInBlock))
-        return state.Error("Failed to process zerocoin");
+
+bool ProcessZerocoinData(CValidationState& state, const CBlockIndex* pindex, const std::map<libzerocoin::CoinSpend, uint256>& mapSpends, const std::map<libzerocoin::PublicCoin, uint256>& mapMints, const std::map<uint256, uint256>& mapSpentPubcoinsInBlock) {
+    LogPrint(BCLog::ZEROSPEND, "Processing Zerocoin data for block height=%d\n", pindex->nHeight);
+
+    // Add data to cache
+    if (!CacheAndFlushZerocoinData(state, pindex, mapSpends, mapMints, mapSpentPubcoinsInBlock)) {
+        LogPrint(BCLog::ZEROSPEND, "Error: Failed to process Zerocoin data\n");
+        return state.Error("Failed to process Zerocoin data");
+    }
+
+    // Force flush the cache after processing
+    if (!FlushCacheToDatabase(pindex, state)) {
+        LogPrint(BCLog::ZEROSPEND, "Error: Failed to flush cache after processing Zerocoin data for block height=%d\n", pindex->nHeight);
+        return state.Error("Failed to flush Zerocoin cache");
+    }
+
+    LogPrint(BCLog::ZEROSPEND, "Zerocoin data processed successfully for block height=%d\n", pindex->nHeight);
     return true;
 }
+
 
 /**
  * Global state
