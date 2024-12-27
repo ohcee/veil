@@ -74,27 +74,47 @@
 #include "miner.h"
 
 #include <sys/types.h>
+#include <unistd.h>
+#ifdef __APPLE__
+#include <sys/sysctl.h>
+#endif
 #ifdef _WIN32
 #include <windows.h>
-#else
-#include <unistd.h>
 #endif
 
 size_t GetAvailableRAM() {
 #ifdef _WIN32
+    // Windows implementation
     MEMORYSTATUSEX memInfo;
     memInfo.dwLength = sizeof(MEMORYSTATUSEX);
     if (GlobalMemoryStatusEx(&memInfo)) {
         return memInfo.ullAvailPhys / (1024 * 1024); // Available RAM in MB
     }
+    return 0;
+#elif defined(__APPLE__)
+    // macOS implementation
+    int mib[2] = { CTL_HW, HW_MEMSIZE };
+    int64_t totalRAM;
+    size_t len = sizeof(totalRAM);
+    if (sysctl(mib, 2, &totalRAM, &len, NULL, 0) == 0) {
+        // Calculate free memory using vm_stat
+        mach_msg_type_number_t count = HOST_VM_INFO_COUNT;
+        vm_statistics64_data_t vmStats;
+        if (host_statistics64(mach_host_self(), HOST_VM_INFO, (host_info64_t)&vmStats, &count) == KERN_SUCCESS) {
+            int64_t freeMemory = (vmStats.free_count + vmStats.inactive_count) * sysconf(_SC_PAGESIZE);
+            return freeMemory / (1024 * 1024); // Available RAM in MB
+        }
+    }
+    return 0;
 #else
+    // Linux implementation
     long pages = sysconf(_SC_AVPHYS_PAGES);
     long page_size = sysconf(_SC_PAGE_SIZE);
     if (pages > 0 && page_size > 0) {
         return (pages * page_size) / (1024 * 1024); // Available RAM in MB
     }
+    return 0;
 #endif
-    return 0; // Default to 0 if RAM cannot be determined
 }
 
 size_t CalculateCacheThreshold(size_t availableRAM) {
