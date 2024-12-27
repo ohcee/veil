@@ -73,6 +73,50 @@
 #include "veil/zerocoin/accumulators.h"
 #include "miner.h"
 
+#include <sys/types.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
+
+size_t GetAvailableRAM() {
+#ifdef _WIN32
+    MEMORYSTATUSEX memInfo;
+    memInfo.dwLength = sizeof(MEMORYSTATUSEX);
+    if (GlobalMemoryStatusEx(&memInfo)) {
+        return memInfo.ullAvailPhys / (1024 * 1024); // Available RAM in MB
+    }
+#else
+    long pages = sysconf(_SC_AVPHYS_PAGES);
+    long page_size = sysconf(_SC_PAGE_SIZE);
+    if (pages > 0 && page_size > 0) {
+        return (pages * page_size) / (1024 * 1024); // Available RAM in MB
+    }
+#endif
+    return 0; // Default to 0 if RAM cannot be determined
+}
+
+size_t CalculateCacheThreshold(size_t availableRAM) {
+    if (availableRAM == 0) {
+        // Fallback to a safe default if RAM detection fails
+        return 60;
+    }
+
+    // Use 5% of available RAM for cache, ensuring it's not too small or too large
+    size_t threshold = availableRAM * 0.05; // 5% of available RAM
+    if (threshold < 60) return 60;          // Minimum threshold
+    if (threshold > 500) return 500;       // Maximum threshold
+    return threshold;
+}
+
+size_t GetDynamicCacheThreshold(const CBlockIndex* pindex) {
+    size_t availableRAM = GetAvailableRAM();
+
+    // Always use a dynamically calculated threshold based on available RAM
+    return CalculateCacheThreshold(availableRAM);
+}
+
 #if defined(NDEBUG)
 # error "Veil cannot be compiled without assertions."
 #endif
@@ -113,10 +157,13 @@ bool CacheAndFlushZerocoinData(CValidationState& state, const CBlockIndex* pinde
         cacheSpentPubcoins.insert(mapSpentPubcoinsInBlock.begin(), mapSpentPubcoinsInBlock.end());
     }
 
+    // Dynamically calculate cache threshold based on available RAM
+    size_t currentThreshold = GetDynamicCacheThreshold(pindex);
+
     // Check if cache size threshold is reached
-    if (cacheSpends.size() >= CACHE_SIZE_THRESHOLD || 
-        cacheMints.size() >= CACHE_SIZE_THRESHOLD || 
-        cacheSpentPubcoins.size() >= CACHE_SIZE_THRESHOLD) {
+    if (cacheSpends.size() >= currentThreshold || 
+        cacheMints.size() >= currentThreshold || 
+        cacheSpentPubcoins.size() >= currentThreshold) {
         if (!FlushCacheToDatabase(pindex, state)) {
             return false;
         }
@@ -136,7 +183,6 @@ bool ProcessZerocoinData(CValidationState& state, const CBlockIndex* pindex, con
 
     return true;
 }
-
 
 /**
  * Global state
