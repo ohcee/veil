@@ -124,12 +124,17 @@ size_t CalculateCacheThreshold(size_t availableRAM) {
         // Fallback to a safe default if RAM detection fails
         return 60;
     }
-
-    // Use 5% of available RAM for cache, ensuring it's not too small or too large
-    size_t threshold = availableRAM * 0.05; // 5% of available RAM
-    if (threshold < 60) return 60;          // Minimum threshold
-    if (threshold > 500) return 500;       // Maximum threshold
-    return threshold;
+    // Dynamically adjust thresholds based on available RAM
+    if (availableRAM <= 1024) { // Less than or equal to 1 GB
+        return 60; // Minimal cache size for low-memory systems
+    } else if (availableRAM <= 4096) { // Between 1 GB and 4 GB
+        return availableRAM * 0.06; // Use 6% of RAM
+    } else if (availableRAM <= 8192) { // Between 4 GB and 8 GB
+        return availableRAM * 0.08; // Use 8% of RAM
+    } else { // More than 8 GB
+        size_t threshold = availableRAM * 0.12; // Use 12% of RAM
+        return threshold > 2500 ? 2500 : threshold; // Cap at 2500 MB
+    }
 }
 
 size_t GetDynamicCacheThreshold(const CBlockIndex* pindex) {
