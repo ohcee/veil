@@ -177,24 +177,31 @@ bool FlushCacheToDatabase(const CBlockIndex* pindex, CValidationState& state) {
     return true;
 }
 
-bool CacheAndFlushZerocoinData(CValidationState& state, const CBlockIndex* pindex, const std::map<libzerocoin::CoinSpend, uint256>& mapSpends, const std::map<libzerocoin::PublicCoin, uint256>& mapMints, const std::map<uint256, uint256>& mapSpentPubcoinsInBlock) {
+bool CacheAndFlushZerocoinData(CValidationState& state, const CBlockIndex* pindex, const std::map<libzerocoin::CoinSpend, uint256>& mapSpends, const std::map<libzerocoin::PublicCoin, uint256>& mapMints, const std::map<uint256, uint256>& mapSpentPubcoinsInBlock)
+{
     cacheSpends.insert(mapSpends.begin(), mapSpends.end());
     cacheMints.insert(mapMints.begin(), mapMints.end());
+
     if (pindex->nHeight >= Params().HeightLightZerocoin()) {
         cacheSpentPubcoins.insert(mapSpentPubcoinsInBlock.begin(), mapSpentPubcoinsInBlock.end());
     }
 
-    // Dynamically calculate cache threshold based on available RAM
-    size_t currentThreshold = GetDynamicCacheThreshold(pindex);
+    size_t currentThreshold;
+    if (isNodeSynced(pindex)) {
+        currentThreshold = 12;
+    } else {
+        currentThreshold = GetDynamicCacheThreshold(pindex);
+    }
 
-    // Check if cache size threshold is reached
-    if (cacheSpends.size() >= currentThreshold || 
-        cacheMints.size() >= currentThreshold || 
-        cacheSpentPubcoins.size() >= currentThreshold) {
+    if (cacheSpends.size() >= currentThreshold ||
+        cacheMints.size() >= currentThreshold ||
+        cacheSpentPubcoins.size() >= currentThreshold)
+    {
         if (!FlushCacheToDatabase(pindex, state)) {
             return false;
         }
     }
+
     return true;
 }
 
@@ -371,7 +378,19 @@ private:
 
 } g_chainstate;
 
+bool isNodeSynced(const CBlockIndex* pindex)
+{
+    // Check for null pointer or invalid height
+    if (!pindex || pindex->nHeight < 0) {
+        return false;
+    }
 
+    // Retrieve the active chain tip
+    int chainHeight = g_chainstate.chainActive.Height();
+
+    // If we're within 1 block of the tip, consider ourselves synced
+    return (chainHeight - pindex->nHeight <= 1);
+}
 
 CCriticalSection cs_main;
 CCriticalSection cs_watchonly;

@@ -150,6 +150,8 @@ static const int DEFAULT_STOPATHEIGHT = 0;
 // Define the cache size threshold
 const size_t CACHE_SIZE_THRESHOLD = 240;
 
+bool isNodeSynced(const CBlockIndex* pindex);
+
 bool CacheAndFlushZerocoinData(CValidationState& state, const CBlockIndex* pindex, 
     const std::map<uint256, uint256>& mapSpends, 
     const std::map<uint256, uint256>& mapMints, 
