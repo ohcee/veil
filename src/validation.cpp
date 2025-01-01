@@ -121,27 +121,28 @@ size_t GetAvailableRAM() {
 
 size_t CalculateCacheThreshold(size_t availableRAM) {
     if (availableRAM == 0) {
-        // Fallback to a safe default if RAM detection fails
-        return 60;
+        return 50; // Fallback for unknown RAM
     }
-    // Dynamically adjust thresholds based on available RAM
-    if (availableRAM <= 1024) { // Less than or equal to 1 GB
-        return 60; // Minimal cache size for low-memory systems
-    } else if (availableRAM <= 4096) { // Between 1 GB and 4 GB
-        return availableRAM * 0.06; // Use 6% of RAM
-    } else if (availableRAM <= 8192) { // Between 4 GB and 8 GB
-        return availableRAM * 0.08; // Use 8% of RAM
-    } else { // More than 8 GB
-        size_t threshold = availableRAM * 0.12; // Use 12% of RAM
-        return threshold > 2500 ? 2500 : threshold; // Cap at 2500 MB
+    if (availableRAM <= 1024) { // <= 1 GB
+        return 50; // Minimal cache
+    } else if (availableRAM <= 4096) { // 1–4 GB
+        return availableRAM * 0.05; // Use 5% of RAM
+    } else if (availableRAM <= 8192) { // 4–8 GB
+        return availableRAM * 0.07; // Use 7% of RAM
+    } else { // > 8 GB
+        size_t threshold = availableRAM * 0.10; // Use 10% of RAM
+        return threshold > 2000 ? 2000 : threshold; // Cap at 2000 MB
     }
 }
 
 size_t GetDynamicCacheThreshold(const CBlockIndex* pindex) {
     size_t availableRAM = GetAvailableRAM();
+    size_t threshold = CalculateCacheThreshold(availableRAM);
 
-    // Always use a dynamically calculated threshold based on available RAM
-    return CalculateCacheThreshold(availableRAM);
+    LogPrintf("GetDynamicCacheThreshold: availableRAM=%zu MB, calculatedThreshold=%zu MB\n",
+              availableRAM, threshold);
+
+    return threshold;
 }
 
 #if defined(NDEBUG)
@@ -157,27 +158,36 @@ std::map<libzerocoin::PublicCoin, uint256> cacheMints;
 std::map<uint256, uint256> cacheSpentPubcoins;
 
 bool FlushCacheToDatabase(const CBlockIndex* pindex, CValidationState& state) {
+    LogPrintf("FlushCacheToDatabase: spends=%zu, mints=%zu, pubcoins=%zu\n",
+              cacheSpends.size(), cacheMints.size(), cacheSpentPubcoins.size());
+
     if (!pzerocoinDB->WriteCoinSpendBatch(cacheSpends)) {
+        LogPrintf("FlushCacheToDatabase: Failed to write coin spends.\n");
         return state.Error("Failed to record coin serials to database");
     }
     if (!pzerocoinDB->WriteCoinMintBatch(cacheMints)) {
+        LogPrintf("FlushCacheToDatabase: Failed to write coin mints.\n");
         return state.Error("Failed to record new mints to database");
     }
     if (pindex->nHeight >= Params().HeightLightZerocoin()) {
         if (!pzerocoinDB->WritePubcoinSpendBatch(cacheSpentPubcoins, pindex->GetBlockHash())) {
+            LogPrintf("FlushCacheToDatabase: Failed to write pubcoin spends.\n");
             return state.Error("Failed to record new pubcoin spends to database");
         }
     }
 
-    // Clear caches after successful flush
     cacheSpends.clear();
     cacheMints.clear();
     cacheSpentPubcoins.clear();
+    LogPrintf("FlushCacheToDatabase: Cache successfully flushed.\n");
 
     return true;
 }
 
-bool CacheAndFlushZerocoinData(CValidationState& state, const CBlockIndex* pindex, const std::map<libzerocoin::CoinSpend, uint256>& mapSpends, const std::map<libzerocoin::PublicCoin, uint256>& mapMints, const std::map<uint256, uint256>& mapSpentPubcoinsInBlock)
+bool CacheAndFlushZerocoinData(CValidationState& state, const CBlockIndex* pindex,
+    const std::map<libzerocoin::CoinSpend, uint256>& mapSpends,
+    const std::map<libzerocoin::PublicCoin, uint256>& mapMints,
+    const std::map<uint256, uint256>& mapSpentPubcoinsInBlock)
 {
     cacheSpends.insert(mapSpends.begin(), mapSpends.end());
     cacheMints.insert(mapMints.begin(), mapMints.end());
@@ -186,18 +196,17 @@ bool CacheAndFlushZerocoinData(CValidationState& state, const CBlockIndex* pinde
         cacheSpentPubcoins.insert(mapSpentPubcoinsInBlock.begin(), mapSpentPubcoinsInBlock.end());
     }
 
-    size_t currentThreshold;
-    if (isNodeSynced(pindex)) {
-        currentThreshold = 12;
-    } else {
-        currentThreshold = GetDynamicCacheThreshold(pindex);
-    }
+    size_t currentThreshold = isNodeSynced(pindex) ? 12 : GetDynamicCacheThreshold(pindex);
+    LogPrintf("CacheAndFlushZerocoinData: currentThreshold=%zu, spends=%zu, mints=%zu, pubcoins=%zu\n",
+              currentThreshold, cacheSpends.size(), cacheMints.size(), cacheSpentPubcoins.size());
 
     if (cacheSpends.size() >= currentThreshold ||
         cacheMints.size() >= currentThreshold ||
         cacheSpentPubcoins.size() >= currentThreshold)
     {
+        LogPrintf("Flushing cache to database. Threshold exceeded.\n");
         if (!FlushCacheToDatabase(pindex, state)) {
+            LogPrintf("Cache flush failed.\n");
             return false;
         }
     }
@@ -205,14 +214,13 @@ bool CacheAndFlushZerocoinData(CValidationState& state, const CBlockIndex* pinde
     return true;
 }
 
-bool ProcessZerocoinData(CValidationState& state, const CBlockIndex* pindex, const std::map<libzerocoin::CoinSpend, uint256>& mapSpends, const std::map<libzerocoin::PublicCoin, uint256>& mapMints, const std::map<uint256, uint256>& mapSpentPubcoinsInBlock) {
+bool ProcessZerocoinData(CValidationState& state, const CBlockIndex* pindex,
+    const std::map<libzerocoin::CoinSpend, uint256>& mapSpends,
+    const std::map<libzerocoin::PublicCoin, uint256>& mapMints,
+    const std::map<uint256, uint256>& mapSpentPubcoinsInBlock)
+{
     if (!CacheAndFlushZerocoinData(state, pindex, mapSpends, mapMints, mapSpentPubcoinsInBlock)) {
         return state.Error("Failed to process Zerocoin data");
-    }
-
-    // Force flush to ensure consistency after every block
-    if (!FlushCacheToDatabase(pindex, state)) {
-        return state.Error("Failed to flush Zerocoin cache after processing block");
     }
 
     return true;
@@ -378,18 +386,26 @@ private:
 
 } g_chainstate;
 
-bool isNodeSynced(const CBlockIndex* pindex)
-{
-    // Check for null pointer or invalid height
+bool isNodeSynced(const CBlockIndex* pindex) {
     if (!pindex || pindex->nHeight < 0) {
         return false;
     }
 
-    // Retrieve the active chain tip
     int chainHeight = g_chainstate.chainActive.Height();
+    static int64_t lastNearTip = 0;
 
-    // If we're within 1 block of the tip, consider ourselves synced
-    return (chainHeight - pindex->nHeight <= 1);
+    if (chainHeight - pindex->nHeight <= 20) {
+        if (lastNearTip == 0) {
+            lastNearTip = GetTime();
+        }
+        bool synced = (GetTime() - lastNearTip >= 60);
+        LogPrintf("isNodeSynced: chainHeight=%d, pindexHeight=%d, synced=%d\n",
+                  chainHeight, pindex->nHeight, synced);
+        return synced;
+    }
+
+    lastNearTip = 0;
+    return false;
 }
 
 CCriticalSection cs_main;
