@@ -394,11 +394,11 @@ bool isNodeSynced(const CBlockIndex* pindex) {
     int chainHeight = g_chainstate.chainActive.Height();
     static int64_t lastNearTip = 0;
 
-    if (chainHeight - pindex->nHeight <= 20) {
+    if (chainHeight - pindex->nHeight <= 50) {
         if (lastNearTip == 0) {
             lastNearTip = GetTime();
         }
-        bool synced = (GetTime() - lastNearTip >= 60);
+        bool synced = (GetTime() - lastNearTip >= 300);
         LogPrintf("isNodeSynced: chainHeight=%d, pindexHeight=%d, synced=%d\n",
                   chainHeight, pindex->nHeight, synced);
         return synced;
