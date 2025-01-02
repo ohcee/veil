@@ -121,28 +121,30 @@ size_t GetAvailableRAM() {
 
 size_t CalculateCacheThreshold(size_t availableRAM) {
     if (availableRAM == 0) {
-        return 50; // Fallback for unknown RAM
+        return 120; // Default to 120 if RAM detection fails
     }
-    if (availableRAM <= 1024) { // <= 1 GB
-        return 50; // Minimal cache
-    } else if (availableRAM <= 4096) { // 1–4 GB
-        return availableRAM * 0.05; // Use 5% of RAM
-    } else if (availableRAM <= 8192) { // 4–8 GB
-        return availableRAM * 0.07; // Use 7% of RAM
-    } else { // > 8 GB
-        size_t threshold = availableRAM * 0.10; // Use 10% of RAM
-        return threshold > 2000 ? 2000 : threshold; // Cap at 2000 MB
-    }
+
+    // Dynamically adjust thresholds based on available RAM
+    if (availableRAM <= 1024) return 120;          // Minimum threshold for low-memory systems
+    if (availableRAM <= 4096) return availableRAM * 0.06; // 6% for 1–4 GB
+    if (availableRAM <= 8192) return availableRAM * 0.08; // 8% for 4–8 GB
+    return availableRAM * 0.12 > 2500 ? 2500 : availableRAM * 0.12; // 12% capped at 2500 MB
 }
 
 size_t GetDynamicCacheThreshold(const CBlockIndex* pindex) {
     size_t availableRAM = GetAvailableRAM();
-    size_t threshold = CalculateCacheThreshold(availableRAM);
+    size_t dynamicThreshold = CalculateCacheThreshold(availableRAM);
+
+    // Ensure the threshold is a factor of 12 and no less than 120
+    dynamicThreshold = (dynamicThreshold / 12) * 12; // Round to the nearest multiple of 12
+    if (dynamicThreshold < 120) {
+        dynamicThreshold = 120; // Set minimum threshold
+    }
 
     LogPrintf("GetDynamicCacheThreshold: availableRAM=%zu MB, calculatedThreshold=%zu MB\n",
-              availableRAM, threshold);
+              availableRAM, dynamicThreshold);
 
-    return threshold;
+    return dynamicThreshold;
 }
 
 #if defined(NDEBUG)
@@ -184,29 +186,25 @@ bool FlushCacheToDatabase(const CBlockIndex* pindex, CValidationState& state) {
     return true;
 }
 
-bool CacheAndFlushZerocoinData(CValidationState& state, const CBlockIndex* pindex,
-    const std::map<libzerocoin::CoinSpend, uint256>& mapSpends,
-    const std::map<libzerocoin::PublicCoin, uint256>& mapMints,
-    const std::map<uint256, uint256>& mapSpentPubcoinsInBlock)
-{
+bool CacheAndFlushZerocoinData(CValidationState& state, const CBlockIndex* pindex, 
+                               const std::map<libzerocoin::CoinSpend, uint256>& mapSpends, 
+                               const std::map<libzerocoin::PublicCoin, uint256>& mapMints, 
+                               const std::map<uint256, uint256>& mapSpentPubcoinsInBlock) {
     cacheSpends.insert(mapSpends.begin(), mapSpends.end());
     cacheMints.insert(mapMints.begin(), mapMints.end());
-
     if (pindex->nHeight >= Params().HeightLightZerocoin()) {
         cacheSpentPubcoins.insert(mapSpentPubcoinsInBlock.begin(), mapSpentPubcoinsInBlock.end());
     }
 
-    size_t currentThreshold = isNodeSynced(pindex) ? 12 : GetDynamicCacheThreshold(pindex);
+    size_t currentThreshold = isNodeSynced(pindex) ? 120 : GetDynamicCacheThreshold(pindex);
+
     LogPrintf("CacheAndFlushZerocoinData: currentThreshold=%zu, spends=%zu, mints=%zu, pubcoins=%zu\n",
               currentThreshold, cacheSpends.size(), cacheMints.size(), cacheSpentPubcoins.size());
 
     if (cacheSpends.size() >= currentThreshold ||
         cacheMints.size() >= currentThreshold ||
-        cacheSpentPubcoins.size() >= currentThreshold)
-    {
-        LogPrintf("Flushing cache to database. Threshold exceeded.\n");
+        cacheSpentPubcoins.size() >= currentThreshold) {
         if (!FlushCacheToDatabase(pindex, state)) {
-            LogPrintf("Cache flush failed.\n");
             return false;
         }
     }
