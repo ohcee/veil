@@ -120,31 +120,14 @@ size_t GetAvailableRAM() {
 }
 
 size_t CalculateCacheThreshold(size_t availableRAM) {
-    if (availableRAM == 0) {
-        return 120; // Default to 120 if RAM detection fails
-    }
-
-    // Dynamically adjust thresholds based on available RAM
-    if (availableRAM <= 1024) return 120;          // Minimum threshold for low-memory systems
-    if (availableRAM <= 4096) return availableRAM * 0.06; // 6% for 1–4 GB
-    if (availableRAM <= 8192) return availableRAM * 0.08; // 8% for 4–8 GB
-    return availableRAM * 0.12 > 2500 ? 2500 : availableRAM * 0.12; // 12% capped at 2500 MB
+    // Always return 12 for simplicity and reliability
+    return 12;
 }
 
 size_t GetDynamicCacheThreshold(const CBlockIndex* pindex) {
-    size_t availableRAM = GetAvailableRAM();
-    size_t dynamicThreshold = CalculateCacheThreshold(availableRAM);
-
-    // Ensure the threshold is a factor of 12 and no less than 120
-    dynamicThreshold = (dynamicThreshold / 12) * 12; // Round to the nearest multiple of 12
-    if (dynamicThreshold < 120) {
-        dynamicThreshold = 120; // Set minimum threshold
-    }
-
-    LogPrintf("GetDynamicCacheThreshold: availableRAM=%zu MB, calculatedThreshold=%zu MB\n",
-              availableRAM, dynamicThreshold);
-
-    return dynamicThreshold;
+    // Always use 12 as the threshold
+    LogPrintf("GetDynamicCacheThreshold: using fixed threshold=12\n");
+    return 12;
 }
 
 #if defined(NDEBUG)
@@ -196,7 +179,7 @@ bool CacheAndFlushZerocoinData(CValidationState& state, const CBlockIndex* pinde
         cacheSpentPubcoins.insert(mapSpentPubcoinsInBlock.begin(), mapSpentPubcoinsInBlock.end());
     }
 
-    size_t currentThreshold = isNodeSynced(pindex) ? 120 : GetDynamicCacheThreshold(pindex);
+    size_t currentThreshold = GetDynamicCacheThreshold(pindex);
 
     LogPrintf("CacheAndFlushZerocoinData: currentThreshold=%zu, spends=%zu, mints=%zu, pubcoins=%zu\n",
               currentThreshold, cacheSpends.size(), cacheMints.size(), cacheSpentPubcoins.size());
