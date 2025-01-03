@@ -148,7 +148,7 @@ static const bool DEFAULT_PEERBLOOMFILTERS = true;
 static const int DEFAULT_STOPATHEIGHT = 0;
 
 // Define the cache size threshold
-const size_t CACHE_SIZE_THRESHOLD = 240;
+const size_t CACHE_SIZE_THRESHOLD = 25;
 
 bool isNodeSynced(const CBlockIndex* pindex);
 

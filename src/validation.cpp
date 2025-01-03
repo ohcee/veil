@@ -119,17 +119,6 @@ size_t GetAvailableRAM() {
 #endif
 }
 
-size_t CalculateCacheThreshold(size_t availableRAM) {
-    // Always return 12 for simplicity and reliability
-    return 12;
-}
-
-size_t GetDynamicCacheThreshold(const CBlockIndex* pindex) {
-    // Always use 12 as the threshold
-    LogPrintf("GetDynamicCacheThreshold: using fixed threshold=12\n");
-    return 12;
-}
-
 #if defined(NDEBUG)
 # error "Veil cannot be compiled without assertions."
 #endif
@@ -179,7 +168,7 @@ bool CacheAndFlushZerocoinData(CValidationState& state, const CBlockIndex* pinde
         cacheSpentPubcoins.insert(mapSpentPubcoinsInBlock.begin(), mapSpentPubcoinsInBlock.end());
     }
 
-    size_t currentThreshold = GetDynamicCacheThreshold(pindex);
+    size_t currentThreshold = CACHE_SIZE_THRESHOLD;
 
     LogPrintf("CacheAndFlushZerocoinData: currentThreshold=%zu, spends=%zu, mints=%zu, pubcoins=%zu\n",
               currentThreshold, cacheSpends.size(), cacheMints.size(), cacheSpentPubcoins.size());
