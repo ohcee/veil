@@ -73,52 +73,6 @@
 #include "veil/zerocoin/accumulators.h"
 #include "miner.h"
 
-#include <sys/types.h>
-#include <unistd.h>
-#ifdef __APPLE__
-#include <mach/mach.h>
-#include <mach/mach_host.h>
-#include <sys/sysctl.h>
-#endif
-#ifdef _WIN32
-#include <windows.h>
-#endif
-
-size_t GetAvailableRAM() {
-#ifdef _WIN32
-    // Windows implementation
-    MEMORYSTATUSEX memInfo;
-    memInfo.dwLength = sizeof(MEMORYSTATUSEX);
-    if (GlobalMemoryStatusEx(&memInfo)) {
-        return memInfo.ullAvailPhys / (1024 * 1024); // Available RAM in MB
-    }
-    return 0;
-#elif defined(__APPLE__)
-    // macOS implementation
-    int mib[2] = { CTL_HW, HW_MEMSIZE };
-    int64_t totalRAM;
-    size_t len = sizeof(totalRAM);
-    if (sysctl(mib, 2, &totalRAM, &len, NULL, 0) == 0) {
-        // Calculate free memory using vm_stat
-        mach_msg_type_number_t count = HOST_VM_INFO_COUNT;
-        vm_statistics64_data_t vmStats;
-        if (host_statistics64(mach_host_self(), HOST_VM_INFO, (host_info64_t)&vmStats, &count) == KERN_SUCCESS) {
-            int64_t freeMemory = (vmStats.free_count + vmStats.inactive_count) * sysconf(_SC_PAGESIZE);
-            return freeMemory / (1024 * 1024); // Available RAM in MB
-        }
-    }
-    return 0;
-#else
-    // Linux implementation
-    long pages = sysconf(_SC_AVPHYS_PAGES);
-    long page_size = sysconf(_SC_PAGE_SIZE);
-    if (pages > 0 && page_size > 0) {
-        return (pages * page_size) / (1024 * 1024); // Available RAM in MB
-    }
-    return 0;
-#endif
-}
-
 #if defined(NDEBUG)
 # error "Veil cannot be compiled without assertions."
 #endif
@@ -355,28 +309,6 @@ private:
     bool RollforwardBlock(const CBlockIndex* pindex, CCoinsViewCache& inputs, const CChainParams& params) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
 
 } g_chainstate;
-
-bool isNodeSynced(const CBlockIndex* pindex) {
-    if (!pindex || pindex->nHeight < 0) {
-        return false;
-    }
-
-    int chainHeight = g_chainstate.chainActive.Height();
-    static int64_t lastNearTip = 0;
-
-    if (chainHeight == pindex->nHeight) {
-        if (lastNearTip == 0) {
-            lastNearTip = GetTime();
-        }
-        bool synced = (GetTime() - lastNearTip >= 30);
-        LogPrintf("isNodeSynced: chainHeight=%d, pindexHeight=%d, isSynced=%d\n",
-                  chainHeight, pindex->nHeight, synced);
-        return synced;
-    }
-
-    lastNearTip = 0;
-    return false;
-}
 
 CCriticalSection cs_main;
 CCriticalSection cs_watchonly;
