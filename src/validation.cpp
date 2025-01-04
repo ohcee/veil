@@ -161,30 +161,21 @@ bool FlushCacheToDatabase(const CBlockIndex* pindex, CValidationState& state) {
 bool CacheAndFlushZerocoinData(CValidationState& state, const CBlockIndex* pindex, 
                                const std::map<libzerocoin::CoinSpend, uint256>& mapSpends, 
                                const std::map<libzerocoin::PublicCoin, uint256>& mapMints, 
-                               const std::map<uint256, uint256>& mapSpentPubcoinsInBlock) 
-{
-    if (isNodeSynced(pindex)) {
-        LogPrintf("CacheAndFlushZerocoinData: Node is synced. Writing directly to database.\n");
-        if (!pzerocoinDB->WriteCoinSpendBatch(mapSpends) ||
-            !pzerocoinDB->WriteCoinMintBatch(mapMints) ||
-            !pzerocoinDB->WritePubcoinSpendBatch(mapSpentPubcoinsInBlock, pindex->GetBlockHash())) 
-        {
-            return state.Error("Failed to write directly to database");
-        }
-        return true;
-    }
-
-    // Normal caching logic if not synced
+                               const std::map<uint256, uint256>& mapSpentPubcoinsInBlock) {
     cacheSpends.insert(mapSpends.begin(), mapSpends.end());
     cacheMints.insert(mapMints.begin(), mapMints.end());
     if (pindex->nHeight >= Params().HeightLightZerocoin()) {
         cacheSpentPubcoins.insert(mapSpentPubcoinsInBlock.begin(), mapSpentPubcoinsInBlock.end());
     }
 
-    if (cacheSpends.size() >= CACHE_SIZE_THRESHOLD ||
-        cacheMints.size() >= CACHE_SIZE_THRESHOLD ||
-        cacheSpentPubcoins.size() >= CACHE_SIZE_THRESHOLD) 
-    {
+    size_t currentThreshold = CACHE_SIZE_THRESHOLD;
+
+    LogPrintf("CacheAndFlushZerocoinData: currentThreshold=%zu, spends=%zu, mints=%zu, pubcoins=%zu\n",
+              currentThreshold, cacheSpends.size(), cacheMints.size(), cacheSpentPubcoins.size());
+
+    if (cacheSpends.size() >= currentThreshold ||
+        cacheMints.size() >= currentThreshold ||
+        cacheSpentPubcoins.size() >= currentThreshold) {
         if (!FlushCacheToDatabase(pindex, state)) {
             return false;
         }
@@ -192,7 +183,6 @@ bool CacheAndFlushZerocoinData(CValidationState& state, const CBlockIndex* pinde
 
     return true;
 }
-
 
 bool ProcessZerocoinData(CValidationState& state, const CBlockIndex* pindex,
     const std::map<libzerocoin::CoinSpend, uint256>& mapSpends,
@@ -368,27 +358,23 @@ private:
 
 bool isNodeSynced(const CBlockIndex* pindex) {
     if (!pindex || pindex->nHeight < 0) {
-        return false; // Invalid or uninitialized pindex
+        return false;
     }
 
     int chainHeight = g_chainstate.chainActive.Height();
-    int syncDelayThreshold = 10; // 10 seconds delay to consider synced
-    static int64_t lastNearTipTime = 0;
+    static int64_t lastNearTip = 0;
 
-    // Node is synced only if it is at the chain tip
     if (chainHeight == pindex->nHeight) {
-        if (lastNearTipTime == 0) {
-            lastNearTipTime = GetTime();
+        if (lastNearTip == 0) {
+            lastNearTip = GetTime();
         }
-
-        bool isSynced = (GetTime() - lastNearTipTime >= syncDelayThreshold);
-        LogPrint(BCLog::VALIDATION, "isNodeSynced: chainHeight=%d, pindexHeight=%d, isSynced=%d\n",
-                 chainHeight, pindex->nHeight, isSynced);
-        return isSynced;
+        bool synced = (GetTime() - lastNearTip >= 30);
+        LogPrintf("isNodeSynced: chainHeight=%d, pindexHeight=%d, isSynced=%d\n",
+                  chainHeight, pindex->nHeight, synced);
+        return synced;
     }
 
-    // Reset the timer if not at the tip
-    lastNearTipTime = 0;
+    lastNearTip = 0;
     return false;
 }
 
