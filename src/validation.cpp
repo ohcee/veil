@@ -86,20 +86,14 @@ std::map<libzerocoin::PublicCoin, uint256> cacheMints;
 std::map<uint256, uint256> cacheSpentPubcoins;
 
 bool FlushCacheToDatabase(const CBlockIndex* pindex, CValidationState& state) {
-    //LogPrintf("FlushCacheToDatabase: spends=%zu, mints=%zu, pubcoins=%zu\n",
-    //          cacheSpends.size(), cacheMints.size(), cacheSpentPubcoins.size());
-    
     if (!pzerocoinDB->WriteCoinSpendBatch(cacheSpends)) {
-        //LogPrintf("FlushCacheToDatabase: Failed to write coin spends.\n");
         return state.Error("Failed to record coin serials to database");
     }
     if (!pzerocoinDB->WriteCoinMintBatch(cacheMints)) {
-        //LogPrintf("FlushCacheToDatabase: Failed to write coin mints.\n");
         return state.Error("Failed to record new mints to database");
     }
     if (pindex->nHeight >= Params().HeightLightZerocoin()) {
         if (!pzerocoinDB->WritePubcoinSpendBatch(cacheSpentPubcoins, pindex->GetBlockHash())) {
-           // LogPrintf("FlushCacheToDatabase: Failed to write pubcoin spends.\n");
             return state.Error("Failed to record new pubcoin spends to database");
         }
     }
@@ -107,7 +101,6 @@ bool FlushCacheToDatabase(const CBlockIndex* pindex, CValidationState& state) {
     cacheSpends.clear();
     cacheMints.clear();
     cacheSpentPubcoins.clear();
-    //LogPrintf("FlushCacheToDatabase: Cache successfully flushed.\n");
 
     return true;
 }
@@ -118,9 +111,6 @@ bool CacheAndFlushZerocoinData(CValidationState& state, const CBlockIndex* pinde
     if (pindex->nHeight >= Params().HeightLightZerocoin()) {
         cacheSpentPubcoins.insert(mapSpentPubcoinsInBlock.begin(), mapSpentPubcoinsInBlock.end());
     }
-
-    //LogPrintf("CacheAndFlushZerocoinData: currentThreshold=%zu, spends=%zu, mints=%zu, pubcoins=%zu\n",
-    //         currentThreshold, cacheSpends.size(), cacheMints.size(), cacheSpentPubcoins.size());
     
     if (cacheSpends.size() >= CACHE_SIZE_THRESHOLD ||
         cacheMints.size() >= CACHE_SIZE_THRESHOLD ||
