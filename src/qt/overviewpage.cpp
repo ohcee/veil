@@ -44,11 +44,13 @@ Q_DECLARE_METATYPE(interfaces::WalletBalances)
 
 void OverviewPage::onEncryptWalletClicked()
 {
-    if (!walletModel) return;  // Ensure the wallet model exists
-    walletModel->setEncryptionStatus(WalletModel::EncryptionStatus::Locked);
-    walletModel->showEncryptWalletDialog();  // Show the encrypt wallet dialog
-}
+    if (!mainWindow) return;  // Ensure mainWindow is valid
 
+    BitcoinGUI *gui = qobject_cast<BitcoinGUI*>(mainWindow->parentWidget());
+    if (!gui || !gui->walletFrame) return;  // Ensure GUI and walletFrame exist
+
+    gui->walletFrame->encryptWallet(true);  // Call Encrypt Wallet
+}
 class TxViewDelegate : public QAbstractItemDelegate
 {
     Q_OBJECT
