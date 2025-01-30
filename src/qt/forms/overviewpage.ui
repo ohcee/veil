@@ -247,7 +247,7 @@
                <item>
                 <widget class="QLabel" name="label_5">
                  <property name="text">
-                  <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;&lt;span style=&quot; font-size:15pt;&quot;&gt;While the snapshot is downloading, encrypt your wallet.&lt;br/&gt;&lt;/span&gt;&lt;span style=&quot; font-size:14pt; color:#707070;&quot;&gt;Gear icon -&amp;gt; Encrypt wallet&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+                  <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;&lt;span style=&quot; font-size:15pt;&quot;&gt;While the snapshot is downloading, &lt;a href=&quot;encrypt&quot;&gt;encrypt your wallet&lt;/a&gt;.&lt;br/&gt;&lt;/span&gt;&lt;span style=&quot; font-size:14pt; color:#707070;&quot;&gt;Gear icon -&amp;gt; Encrypt wallet&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
                  </property>
                 </widget>
                </item>

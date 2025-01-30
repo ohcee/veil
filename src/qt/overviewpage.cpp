@@ -42,6 +42,13 @@ Q_DECLARE_METATYPE(PowTypeFilter);
 
 Q_DECLARE_METATYPE(interfaces::WalletBalances)
 
+void OverviewPage::onEncryptWalletClicked()
+{
+    if (!walletModel) return;  // Ensure the wallet model exists
+    walletModel->setEncryptionStatus(WalletModel::EncryptionStatus::Locked);
+    walletModel->showEncryptWalletDialog();  // Show the encrypt wallet dialog
+}
+
 class TxViewDelegate : public QAbstractItemDelegate
 {
     Q_OBJECT
@@ -234,6 +241,9 @@ OverviewPage::OverviewPage(const PlatformStyle *platformStyle, WalletView *paren
     txdelegate(new TxViewDelegate(platformStyle, this))
 {
     ui->setupUi(this);
+    // Connect the "encrypt your wallet" hotlink
+    connect(ui->labelEncryptWallet, &QLabel::linkActivated, this, &OverviewPage::onEncryptWalletClicked);
+
     ui->title->setProperty("cssClass" , "title");
     setStyleSheet(GUIUtil::loadStyleSheet());
 
