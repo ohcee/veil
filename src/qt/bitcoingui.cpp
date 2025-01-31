@@ -70,16 +70,6 @@
 #include <QDebug>
 #include <iostream>
 
-QAction* BitcoinGUI::getEncryptWalletAction() {
-    return encryptWalletAction;  // Safely return the encryption action
-}
-
-void BitcoinGUI::triggerEncryptWallet() {
-    if (encryptWalletAction) {
-        encryptWalletAction->trigger();  // Trigger the encryption wallet dialog
-    }
-}
-
 const std::string BitcoinGUI::DEFAULT_UIPLATFORM =
 #if defined(Q_OS_MAC)
         "macosx"
@@ -469,6 +459,16 @@ void BitcoinGUI::createActions()
 
     new QShortcut(QKeySequence(Qt::CTRL + Qt::SHIFT + Qt::Key_C), this, SLOT(showDebugWindowActivateConsole()));
     new QShortcut(QKeySequence(Qt::CTRL + Qt::SHIFT + Qt::Key_D), this, SLOT(showDebugWindow()));
+}
+
+QAction* BitcoinGUI::getEncryptWalletAction() {
+    return encryptWalletAction;  // Safely return the encryption action
+}
+
+void BitcoinGUI::triggerEncryptWallet() {
+    if (encryptWalletAction) {
+        encryptWalletAction->trigger();  // Trigger the encryption wallet dialog
+    }
 }
 
 void BitcoinGUI::createMenuBar()
