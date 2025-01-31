@@ -29,6 +29,7 @@
 
 #include <QDebug>
 
+#include <qt/walletframe.h>
 
 #define DECORATION_SIZE 54
 #define NUM_ITEMS 3
@@ -44,13 +45,14 @@ Q_DECLARE_METATYPE(interfaces::WalletBalances)
 
 void OverviewPage::onEncryptWalletClicked()
 {
-    if (!mainWindow) return;  // Ensure mainWindow is valid
+    if (!mainWindow) return;
 
     BitcoinGUI *gui = qobject_cast<BitcoinGUI*>(mainWindow->parentWidget());
-    if (!gui || !gui->walletFrame) return;  // Ensure GUI and walletFrame exist
+    if (!gui || !gui->encryptWalletAction) return;
 
-    gui->walletFrame->encryptWallet(true);  // Call Encrypt Wallet
+    gui->encryptWalletAction->trigger();
 }
+
 class TxViewDelegate : public QAbstractItemDelegate
 {
     Q_OBJECT

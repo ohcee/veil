@@ -225,32 +225,50 @@
                 </spacer>
                </item>
                <item>
-                <widget class="QLabel" name="label_3">
-                 <property name="text">
-                  <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;&lt;span style=&quot; font-size:16pt; &quot;&gt;Let's get you up to speed quickly.&lt;br/&gt;&lt;/span&gt;&lt;span style=&quot; font-size:14pt; color:#707070;&quot;&gt;Visit &lt;a href=&quot;https://veil.tools&quot;&gt;&lt;span style=&quot; font-size:14pt; text-decoration: underline; color:#0000ff;&quot;&gt;https://veil.tools&lt;/span&gt;&lt;/a&gt;&lt;span style=&quot; font-size:14pt; color:#707070;&quot;&gt; to download the lastest snapshot.&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
-                 </property>
-                </widget>
-               </item>
-               <item>
-                <spacer name="verticalSpacer_8">
-                 <property name="orientation">
-                  <enum>Qt::Vertical</enum>
-                 </property>
-                 <property name="sizeHint" stdset="0">
-                  <size>
-                   <width>20</width>
-                   <height>40</height>
-                  </size>
-                 </property>
-                </spacer>
-               </item>
-               <item>
-                <widget class="QLabel" name="label_5">
-                 <property name="text">
-                  <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;&lt;span style=&quot; font-size:15pt;&quot;&gt;While the snapshot is downloading, &lt;a href=&quot;encrypt&quot;&gt;encrypt your wallet&lt;/a&gt;.&lt;br/&gt;&lt;/span&gt;&lt;span style=&quot; font-size:14pt; color:#707070;&quot;&gt;Gear icon -&amp;gt; Encrypt wallet&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
-                 </property>
-                </widget>
-               </item>
+                    <widget class="QLabel" name="label_3">
+                        <property name="text">
+                            <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;
+                            &lt;span style=&quot; font-size:16pt; &quot;&gt;Let's get you up to speed quickly.&lt;br/&gt;&lt;/span&gt;
+                            &lt;span style=&quot; font-size:14pt; color:#707070;&quot;&gt;
+                            Visit &lt;a href=&quot;https://veil.tools&quot;&gt;&lt;span style=&quot; font-size:14pt; text-decoration: underline; color:#0000ff;&quot;&gt;https://veil.tools&lt;/span&gt;&lt;/a&gt;
+                            &lt;span style=&quot; font-size:14pt; color:#707070;&quot;&gt; to download the latest snapshot.&lt;/span&gt;
+                            &lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+                        </property>
+                    </widget>
+                </item>
+                <item>
+                    <spacer name="verticalSpacer_8">
+                        <property name="orientation">
+                            <enum>Qt::Vertical</enum>
+                        </property>
+                        <property name="sizeHint" stdset="0">
+                            <size>
+                                <width>20</width>
+                                <height>40</height>
+                            </size>
+                        </property>
+                    </spacer>
+                </item>
+                <item>
+                    <widget class="QLabel" name="labelEncryptWallet">
+                        <property name="text">
+                            <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;
+                            &lt;p align=&quot;center&quot;&gt;
+                            &lt;span style=&quot; font-size:15pt;&quot;&gt;
+                            While the snapshot is downloading, 
+                            &lt;a href=&quot;encrypt&quot;&gt;encrypt your wallet&lt;/a&gt;.
+                            &lt;/span&gt;
+                            &lt;/p&gt;&lt;/body&gt;&lt;/html&gt;
+                            </string>
+                        </property>
+                        <property name="textFormat">
+                            <enum>Qt::RichText</enum>
+                        </property>
+                        <property name="textInteractionFlags">
+                            <set>Qt::LinksAccessibleByMouse</set>
+                        </property>
+                    </widget>
+                </item>
                <item>
                 <spacer name="verticalSpacer_5">
                  <property name="orientation">

@@ -68,6 +68,7 @@ private Q_SLOTS:
     virtual void hideEvent(QHideEvent *event) override;
 
     void hideOrphans(bool fHide);
+    void onEncryptWalletClicked();
 };
 
 #endif // BITCOIN_QT_OVERVIEWPAGE_H
