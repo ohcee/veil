@@ -150,10 +150,19 @@ jobs:
         tar -C depends/SDKs -xf depends/sdk-sources/Xcode-11.3.1-11C505-extracted-SDK-with-libcxx-headers.tar.gz
       working-directory: ${{ env.SOURCE_ARTIFACT }}
     - name: Build Dependencies
-      run: make -C depends HOST=x86_64-apple-darwin18 -j$(nproc)
+      run: |
+        export CFLAGS="-fPIC -pie"
+        export CXXFLAGS="-fPIC -pie"
+        export LDFLAGS="-Wl,-pie"
+        echo "CFLAGS=${CFLAGS}" >> $GITHUB_ENV
+        echo "CXXFLAGS=${CXXFLAGS}" >> $GITHUB_ENV
+        echo "LDFLAGS=${LDFLAGS}" >> $GITHUB_ENVmake -C depends HOST=x86_64-apple-darwin18 -j$(nproc)
       working-directory: ${{ env.SOURCE_ARTIFACT }}
     - name: Build Veil
       run: |
+        export CFLAGS="-fPIC -pie"
+        export CXXFLAGS="-fPIC -pie"
+        export LDFLAGS="-Wl,-pie"
         ./configure --enable-c++17 --disable-jni --prefix=$(realpath depends/x86_64-apple-darwin18)
         make -j$(nproc)
       working-directory: ${{ env.SOURCE_ARTIFACT }}
