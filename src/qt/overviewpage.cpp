@@ -50,7 +50,7 @@ void OverviewPage::onEncryptWalletClicked()
     BitcoinGUI *gui = qobject_cast<BitcoinGUI*>(mainWindow->parentWidget());
     if (!gui || !gui->encryptWalletAction) return;
 
-    gui->encryptWalletAction->trigger();
+    gui->triggerEncryptWallet();
 }
 
 class TxViewDelegate : public QAbstractItemDelegate

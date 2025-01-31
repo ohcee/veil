@@ -113,6 +113,9 @@ public:
 
     void resizeModalOverlay();
 
+    QAction* getEncryptWalletAction(); 
+    void triggerEncryptWallet();
+
 protected:
     void changeEvent(QEvent *e);
     void closeEvent(QCloseEvent *event);
