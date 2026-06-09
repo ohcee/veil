@@ -280,11 +280,20 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
         if (gArgs.GetBoolArg("-disablewallet", DEFAULT_DISABLE_WALLET))
             return nullptr;
 
-        if (!pwalletMain->CreateZerocoinStake(pindexPrev, pblock->nBits, txCoinStake, nTxNewTime, nComputeTimeStart, coinbaseTx)) {
-            if (nHeight < Params().HeightRingCTStaking() || !pwalletMain->CreateRingCTStake(pindexPrev, pblock->nBits, txCoinStake, nTxNewTime, nComputeTimeStart, coinbaseTx))
-                return nullptr;
+        bool fStakeZerocoin = gArgs.GetBoolArg("-stakezerocoin", true);
+        bool fStakeRingCT = gArgs.GetBoolArg("-stakeringct", true);
+
+        bool fZerocoinStaked = fStakeZerocoin && pwalletMain->CreateZerocoinStake(pindexPrev, pblock->nBits, txCoinStake, nTxNewTime, nComputeTimeStart, coinbaseTx);
+        bool fRingCTStaked = false;
+
+        if (!fZerocoinStaked && fStakeRingCT && nHeight >= Params().HeightRingCTStaking())
+            fRingCTStaked = pwalletMain->CreateRingCTStake(pindexPrev, pblock->nBits, txCoinStake, nTxNewTime, nComputeTimeStart, coinbaseTx);
+
+        if (!fZerocoinStaked && !fRingCTStaked)
+            return nullptr;
+
+        if (fRingCTStaked)
             pendingRCTStake = pwalletMain->GetAnonWallet()->GetPendingSpendForTx(txCoinStake.GetHash());
-        }
 
         pblock->nTime = nTxNewTime;
 #endif
