@@ -2493,8 +2493,12 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
         CAmount nTxValueOut = 0;
         if (tx.IsCoinBase() && !tx.HasBlindedValues()) {
             nTxValueOut += tx.GetValueOut();
-        } else if (tx.IsCoinBase() && block.IsProofOfStake()) {
-            // covers ringct stakes
+        } else if (tx.IsCoinBase() && block.IsProofOfStake() && pindex->nHeight >= Params().HeightRingCTStaking()) {
+            // covers ringct stakes: the blinded reward outputs must commit to
+            // exactly the expected stake reward. Gated on the RingCT staking
+            // activation height so that before activation a blinded PoS
+            // coinbase falls through to the rejection below, preserving the
+            // bad-cb-stealth-ringct rule for stakers as well as miners.
             if (!VerifyCoinbase(nExpStakeReward, tx, state))
                 return false;
             nTxValueOut += nExpStakeReward;
