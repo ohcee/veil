@@ -957,7 +957,14 @@ void BitcoinMiner(std::shared_ptr<CReserveScript> coinbaseScript, bool fProofOfS
         boost::this_thread::interruption_point();
 #ifdef ENABLE_WALLET
         if (enablewallet && fProofOfStake) {
-            if (IsInitialBlockDownload()) {
+            // Never create stakes while reindexing, importing or in initial
+            // block download. A RingCT stake built against a partially
+            // rebuilt RCT output index produces ring member references that
+            // resolve differently on every other node (and on this node after
+            // a clean reindex), so the block is accepted locally but rejected
+            // by the network as bad-block-sig / failed MLSAG. Deliberately
+            // not bypassed by -genoverride.
+            if (fImporting || fReindex || IsInitialBlockDownload()) {
                 UninterruptibleSleep(std::chrono::milliseconds{5000});
                 continue;
             }
