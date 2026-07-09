@@ -149,5 +149,5 @@ bool TransactionFilterProxy::isOrphan(const int status, const int type) const {
 
     return ( (type == TransactionRecord::Generated ||
               type == TransactionRecord::ZeroCoinStake  || type == TransactionRecord::RingCTStake || type == TransactionRecord::CTGenerated || type == TransactionRecord::RingCTGenerated)
-             && (status == TransactionStatus::Conflicted || status == TransactionStatus::NotAccepted || TransactionStatus::Abandoned) );
+             && (status == TransactionStatus::Conflicted || status == TransactionStatus::NotAccepted || status == TransactionStatus::Abandoned) );
 }
