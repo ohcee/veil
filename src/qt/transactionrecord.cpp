@@ -166,14 +166,27 @@ QList<TransactionRecord> TransactionRecord::decomposeTransaction(const interface
                     sub.type = TransactionRecord::CTGenerated;
                     break;
                 case OUTPUT_RINGCT:
-                    sub.type = TransactionRecord::RingCTGenerated;
+                    // RingCT stakes pay the reward in the coinbase; a coinbase
+                    // is never a coinstake, so key off the block type instead
+                    if (wtx.is_stake_reward)
+                        sub.type = TransactionRecord::RingCTStake;
+                    else
+                        sub.type = TransactionRecord::RingCTGenerated;
                     break;
                 default:
                     sub.type = TransactionRecord::Generated;
                     break;
             }
         } else if (((nFlags & ORF_OWNED) || wtx.is_my_zerocoin_mint) && wtx.is_coinstake) {
-            sub.type = TransactionRecord::ZeroCoinStake;
+            if (outputType == OUTPUT_RINGCT) {
+                sub.type = TransactionRecord::RingCTStake;
+                // A RingCT coinstake output has the same value as the staked
+                // input; the reward is paid in the coinbase. Without this the
+                // record shows the full stake value as newly received.
+                sub.credit = 0;
+                sub.debit = 0;
+            } else
+                sub.type = TransactionRecord::ZeroCoinStake;
         } else if (nFlags & ORF_OWNED) {
             switch (outputType) {
                 case OUTPUT_STANDARD:

@@ -420,6 +420,9 @@ struct WalletTx
     int32_t nPowType = 0;
     bool is_coinbase = false;
     bool is_coinstake = false;
+    //! True when this is the coinbase of a proof of stake block, i.e. it
+    //! carries the stake reward (RingCT stakes pay the reward here).
+    bool is_stake_reward = false;
     bool is_my_zerocoin_mint = false;
     bool is_my_zerocoin_spend = false;
     bool is_anon_send = false;
