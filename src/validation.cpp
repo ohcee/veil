@@ -2269,6 +2269,16 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
         }
         return error("%s: Consensus::CheckBlock: %s", __func__, FormatStateMessage(state));
     }
+
+    // Check the RingCT stake signature (if any). This must happen at connect
+    // time rather than in CheckBlock because verification requires the RCT
+    // output index, which is only complete once all prior blocks have been
+    // connected and flushed (see FlushView in ConnectTip). At this point the
+    // check is deterministic, so a failure is definitive and the block is
+    // marked invalid.
+    if (block.IsProofOfStake() && !veil::ValidateRingCTBlockSignature(block))
+        return state.DoS(100, false, REJECT_INVALID, "bad-block-sig", false, "RingCT PoS block signature not valid");
+
     int64_t nTimeCheckBlock = GetTimeMicros() - nTimeStart;
 
     // verify that the view's current state corresponds to the previous block
@@ -4300,7 +4310,9 @@ bool CheckBlock(const CBlock& block, CValidationState& state, const Consensus::P
         return false;
     }
 
-    // Check the block signature if it is a proof of stake block
+    // Check the block signature if it is a proof of stake block.
+    // RingCT stake signatures are validated at connect time instead (see
+    // ConnectBlock), as they require a complete RCT output index.
     if (block.IsProofOfStake() && !veil::ValidateBlockSignature(block))
         return state.DoS(100, false, REJECT_INVALID, "bad-block-sig", true, "PoS block signature not valid");
 
