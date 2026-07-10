@@ -207,6 +207,7 @@ BITCOIN_CORE_H = \
   veil/proofofstake/stakeinput.h \
   veil/ringct/anon.h \
   veil/ringct/blind.h \
+  veil/ringct/bulletproof_wallet.h \
   veil/ringct/extkey.h \
   veil/ringct/anonwallet.h \
   veil/ringct/anonwalletdb.h \
@@ -337,6 +338,7 @@ libbitcoin_wallet_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 libbitcoin_wallet_a_SOURCES = \
   interfaces/wallet.cpp \
   veil/ringct/blind.cpp \
+  veil/ringct/bulletproof_wallet.cpp \
   veil/ringct/stealth.cpp \
   veil/mnemonic/dictionary.cpp \
   veil/mnemonic/generateseed.cpp \
