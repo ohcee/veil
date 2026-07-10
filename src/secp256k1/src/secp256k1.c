@@ -11,6 +11,9 @@
 #include "field_impl.h"
 #include "scalar_impl.h"
 #include "group_impl.h"
+#ifdef ENABLE_MODULE_BULLETPROOF
+#include "scratch_impl.h"
+#endif
 #include "ecmult_impl.h"
 #include "ecmult_const_impl.h"
 #include "ecmult_gen_impl.h"
@@ -123,6 +126,17 @@ void secp256k1_context_set_error_callback(secp256k1_context* ctx, void (*fun)(co
     ctx->error_callback.fn = fun;
     ctx->error_callback.data = data;
 }
+
+#ifdef ENABLE_MODULE_BULLETPROOF
+secp256k1_scratch_space* secp256k1_scratch_space_create(const secp256k1_context* ctx, size_t max_size) {
+    VERIFY_CHECK(ctx != NULL);
+    return secp256k1_scratch_create(&ctx->error_callback, max_size);
+}
+
+void secp256k1_scratch_space_destroy(secp256k1_scratch_space* scratch) {
+    secp256k1_scratch_destroy(scratch);
+}
+#endif
 
 static int secp256k1_pubkey_load(const secp256k1_context* ctx, secp256k1_ge* ge, const secp256k1_pubkey* pubkey) {
     if (sizeof(secp256k1_ge_storage) == 64) {
@@ -600,6 +614,11 @@ int secp256k1_ec_pubkey_combine(const secp256k1_context* ctx, secp256k1_pubkey *
 
 #ifdef ENABLE_MODULE_RANGEPROOF
 # include "modules/rangeproof/main_impl.h"
+#endif
+
+#ifdef ENABLE_MODULE_BULLETPROOF
+# include "include/secp256k1_bulletproofs.h"
+# include "modules/bulletproof/main_impl.h"
 #endif
 
 #ifdef ENABLE_MODULE_MLSAG

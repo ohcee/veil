@@ -173,6 +173,15 @@ typedef int (*secp256k1_nonce_function)(
  *
  *  See also secp256k1_context_randomize.
  */
+typedef struct secp256k1_scratch_space_struct secp256k1_scratch_space;
+
+SECP256K1_API SECP256K1_WARN_UNUSED_RESULT secp256k1_scratch_space* secp256k1_scratch_space_create(
+    const secp256k1_context* ctx,
+    size_t max_size
+) SECP256K1_ARG_NONNULL(1);
+
+SECP256K1_API void secp256k1_scratch_space_destroy(secp256k1_scratch_space* scratch);
+
 SECP256K1_API secp256k1_context* secp256k1_context_create(
     unsigned int flags
 ) SECP256K1_WARN_UNUSED_RESULT;

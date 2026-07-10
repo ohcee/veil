@@ -25,6 +25,8 @@ noinst_HEADERS += src/eckey.h
 noinst_HEADERS += src/eckey_impl.h
 noinst_HEADERS += src/ecmult.h
 noinst_HEADERS += src/ecmult_impl.h
+noinst_HEADERS += src/scratch.h
+noinst_HEADERS += src/scratch_impl.h
 noinst_HEADERS += src/ecmult_const.h
 noinst_HEADERS += src/ecmult_const_impl.h
 noinst_HEADERS += src/ecmult_gen.h
@@ -172,6 +174,10 @@ endif
 
 if ENABLE_MODULE_MLSAG
 include src/modules/mlsag/Makefile.am.include
+
+if ENABLE_MODULE_BULLETPROOF
+include src/modules/bulletproof/Makefile.am.include
+endif
 endif
 
 if ENABLE_MODULE_WHITELIST

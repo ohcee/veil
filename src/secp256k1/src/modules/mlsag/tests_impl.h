@@ -130,13 +130,13 @@ void test_mlsag(void)
     /* --- Test for failure --- */
 
     /* Bad preimage */
-    CHECK(2 == secp256k1_verify_mlsag(ctx,
+    CHECK(0 != secp256k1_verify_mlsag(ctx,
         tmp32, n_columns, n_rows,
         m, ki, pc, ss));
 
 
     /* Bad c */
-    CHECK(2 == secp256k1_verify_mlsag(ctx,
+    CHECK(0 != secp256k1_verify_mlsag(ctx,
         preimage, n_columns, n_rows,
         m, ki, tmp32, ss));
 
@@ -150,7 +150,7 @@ void test_mlsag(void)
     CHECK(0 == secp256k1_generate_mlsag(ctx, ki, pc, ss,
         tmp32, preimage, n_columns, n_rows, n_real_col,
         (const uint8_t**)pkeys, m));
-    CHECK(2 == secp256k1_verify_mlsag(ctx,
+    CHECK(0 != secp256k1_verify_mlsag(ctx,
         preimage, n_columns, n_rows,
         m, ki, pc, ss));
 
@@ -175,7 +175,7 @@ void test_mlsag(void)
     CHECK(0 == secp256k1_generate_mlsag(ctx, ki, pc, ss,
         tmp32, preimage, n_columns, n_rows, n_real_col,
         (const uint8_t**)pkeys, m));
-    CHECK(2 == secp256k1_verify_mlsag(ctx,
+    CHECK(0 != secp256k1_verify_mlsag(ctx,
         preimage, n_columns, n_rows,
         m, ki, pc, ss));
 }

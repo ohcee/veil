@@ -154,6 +154,11 @@ AC_ARG_ENABLE(module_mlsag,
     [enable_module_mlsag=$enableval],
     [enable_module_mlsag=no])
 
+AC_ARG_ENABLE(module_bulletproof,
+    AS_HELP_STRING([--enable-module-bulletproof],[enable bulletproof module (default is no)]),
+    [enable_module_bulletproof=$enableval],
+    [enable_module_bulletproof=no])
+
 AC_ARG_ENABLE(module_whitelist,
     AS_HELP_STRING([--enable-module-whitelist],[enable key whitelisting module (default is no)]),
     [enable_module_whitelist=$enableval],
@@ -496,6 +501,10 @@ if test x"$enable_module_mlsag" = x"yes"; then
   AC_DEFINE(ENABLE_MODULE_MLSAG, 1, [Define this symbol to enable the MLSAG module])
 fi
 
+if test x"$enable_module_bulletproof" = x"yes"; then
+  AC_DEFINE(ENABLE_MODULE_BULLETPROOF, 1, [Define this symbol to enable the bulletproof module])
+fi
+
 if test x"$enable_module_whitelist" = x"yes"; then
   AC_DEFINE(ENABLE_MODULE_WHITELIST, 1, [Define this symbol to enable the key whitelisting module])
 fi
@@ -594,6 +603,7 @@ AM_CONDITIONAL([ENABLE_MODULE_RECOVERY], [test x"$enable_module_recovery" = x"ye
 AM_CONDITIONAL([ENABLE_MODULE_GENERATOR], [test x"$enable_module_generator" = x"yes"])
 AM_CONDITIONAL([ENABLE_MODULE_RANGEPROOF], [test x"$enable_module_rangeproof" = x"yes"])
 AM_CONDITIONAL([ENABLE_MODULE_MLSAG], [test x"$enable_module_mlsag" = x"yes"])
+AM_CONDITIONAL([ENABLE_MODULE_BULLETPROOF], [test x"$enable_module_bulletproof" = x"yes"])
 AM_CONDITIONAL([ENABLE_MODULE_WHITELIST], [test x"$enable_module_whitelist" = x"yes"])
 AM_CONDITIONAL([USE_JNI], [test x"$use_jni" == x"yes"])
 AM_CONDITIONAL([USE_EXTERNAL_ASM], [test x"$use_external_asm" = x"yes"])

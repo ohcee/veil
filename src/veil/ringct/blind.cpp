@@ -142,7 +142,21 @@ void ECC_Start_Blinding()
     // generators support 64-bit proofs aggregated up to 2 commitments.
     blind_scratch = secp256k1_scratch_space_create(secp256k1_ctx_blind, 4 * 1024 * 1024);
     assert(blind_scratch != nullptr);
-    blind_bp_gens = secp256k1_bulletproof_generators_create(secp256k1_ctx_blind, secp256k1_generator_h, 256);
+
+    // The bulletproof blinding generator MUST be the standard generator G, not H:
+    // Veil's pedersen_commit blinds on G (commit = blind*G + value*H), and a
+    // proof only verifies against such a commitment when its blind generator is G.
+    // (Empirically verified: with blinding_gen=G a proof verifies against a native
+    // 5-arg pedersen_commit; with H it does not.) G's generator serialization is
+    // tag 0x0a (even Y) followed by G.x.
+    static const unsigned char G_generator_ser[33] = {
+        0x0a, 0x79,0xBE,0x66,0x7E,0xF9,0xDC,0xBB,0xAC,0x55,0xA0,0x62,0x95,0xCE,0x87,0x0B,
+        0x07,0x02,0x9B,0xFC,0xDB,0x2D,0xCE,0x28,0xD9,0x59,0xF2,0x81,0x5B,0x16,0xF8,0x17,0x98
+    };
+    secp256k1_generator genG;
+    bool okG = secp256k1_generator_parse(secp256k1_ctx_blind, &genG, G_generator_ser);
+    assert(okG);
+    blind_bp_gens = secp256k1_bulletproof_generators_create(secp256k1_ctx_blind, &genG, 256);
     assert(blind_bp_gens != nullptr);
 };
 

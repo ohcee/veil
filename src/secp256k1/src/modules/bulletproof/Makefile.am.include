@@ -1,0 +1,7 @@
+include_HEADERS += include/secp256k1_bulletproofs.h
+noinst_HEADERS += src/modules/bulletproof/main_impl.h
+noinst_HEADERS += src/modules/bulletproof/inner_product_impl.h
+noinst_HEADERS += src/modules/bulletproof/rangeproof_impl.h
+noinst_HEADERS += src/modules/bulletproof/util.h
+noinst_HEADERS += src/modules/bulletproof/commitment_shim.h
+noinst_HEADERS += src/modules/bulletproof/tests_impl.h
