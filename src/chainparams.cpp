@@ -368,6 +368,7 @@ public:
         nKernelModulus = 100;
         nCoinbaseMaturity = 100;
         nHeightRejectStealthOrRingCTCoinbase = 3890103;
+        nHeightEnableBulletproofs = 2000000000; // dormant: set a real activation height when the fork is scheduled
         nProofOfFullNodeRounds = 4;
         nLastPOWBlock = 9816000; // Continue POW until supply creation ends
         nHeightSupplyCreationStop = 9816000; //Should create very close to 300m coins at this time
@@ -549,6 +550,7 @@ public:
         nKernelModulus = 10;
         nCoinbaseMaturity = 10;
         nHeightRejectStealthOrRingCTCoinbase = 0;
+        nHeightEnableBulletproofs = 2000000000; // dormant: set a real activation height when the fork is scheduled
         nProofOfFullNodeRounds = 4;
         nLastPOWBlock = 9816000; // Continue POW until supply creation ends
         nHeightSupplyCreationStop = 9816000; //Should create very close to 300m coins at this time
@@ -722,6 +724,7 @@ public:
         nKernelModulus = 10;
         nCoinbaseMaturity = 10;
         nHeightRejectStealthOrRingCTCoinbase = 0;
+        nHeightEnableBulletproofs = 2000000000; // dormant: set a real activation height when the fork is scheduled
         nProofOfFullNodeRounds = 4;
         nLastPOWBlock = 9816000; // Continue POW until supply creation ends
         nHeightSupplyCreationStop = 9816000; //Should create very close to 300m coins at this time
@@ -872,6 +875,7 @@ public:
         nKernelModulus = 10;
         nCoinbaseMaturity = 10;
         nHeightRejectStealthOrRingCTCoinbase = 0;
+        nHeightEnableBulletproofs = 2000000000; // dormant: set a real activation height when the fork is scheduled
         nProofOfFullNodeRounds = 4;
         nLastPOWBlock = 9816000; // Continue POW until supply creation ends
         nHeightSupplyCreationStop = 9816000; //Should create very close to 300m coins at this time

@@ -2459,6 +2459,24 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
 
         nInputs += tx.vin.size();
 
+        // Bulletproof activation policy (contextual -- gates output TYPES by
+        // hard-fork height). Proof validity is checked type-dispatched in
+        // CheckAnonOutput/CheckBlindOutput (context-free); this only decides
+        // which output types may be CREATED at this height. Only tx.vpout (new
+        // outputs) is inspected, so spending old legacy outputs -- which appear
+        // as inputs, not vpout -- is always permitted.
+        {
+            const bool fBulletproofsActive = pindex->nHeight >= Params().HeightEnableBulletproofs();
+            for (const auto& pout : tx.vpout) {
+                const bool fBpOut = pout->IsType(OUTPUT_CT_BULLETPROOF) || pout->IsType(OUTPUT_RINGCT_BULLETPROOF);
+                const bool fLegacyBlindOut = pout->IsType(OUTPUT_CT) || pout->IsType(OUTPUT_RINGCT);
+                if (fBpOut && !fBulletproofsActive)
+                    return state.DoS(100, false, REJECT_INVALID, "bp-output-before-activation");
+                if (fLegacyBlindOut && fBulletproofsActive)
+                    return state.DoS(100, false, REJECT_INVALID, "borromean-output-after-activation");
+            }
+        }
+
         if (block.vtx[i] != nullptr) {
             for (auto& pout : tx.vpout) {
                 if (!pout->IsStandardOutput())
@@ -2483,7 +2501,8 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
             // Check tx with blinded values
             for (auto& pout : tx.vpout) {
                 // Check non-blind txouts
-                if (!(pout->IsType(OUTPUT_CT) || pout->IsType(OUTPUT_RINGCT))) {
+                if (!(pout->IsType(OUTPUT_CT) || pout->IsType(OUTPUT_RINGCT)
+                      || pout->IsType(OUTPUT_CT_BULLETPROOF) || pout->IsType(OUTPUT_RINGCT_BULLETPROOF))) {
                     if (!pout->IsType(OUTPUT_STANDARD)) {
                         return state.DoS(100, error("ConnectBlock(): invalid txout type in coinbase\n",
                                                     REJECT_INVALID, "bad-cb-txout"));
@@ -2493,17 +2512,24 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
                     }
                 }
 
-                if (pout->IsType(OUTPUT_RINGCT))
+                if (pout->IsType(OUTPUT_RINGCT) || pout->IsType(OUTPUT_RINGCT_BULLETPROOF))
                     state.fHasAnonOutput = true;
 
-                // Use max values in range proofs, so we know the max value out
-                int nExponent, nMantissa;
-                CAmount nMin, nMax;
-                if (GetRangeProofInfo(*(pout->GetPRangeproof()), nExponent, nMantissa, nMin, nMax) != 0)
-                    return state.DoS(100, error("ConnectBlock(): couldn't get range proof info\n",
-                                                REJECT_INVALID, "bad-range-proof"));
-                else
-                    nTxValueOut += nMax;
+                // Account for the maximum value this blinded output could hide, so
+                // the coinbase cannot over-mint. Bulletproofs carry no exponent/
+                // mantissa header to parse; the pinned 64-bit width means the max is
+                // the network money ceiling. Legacy Borromean keeps the header parse.
+                if (pout->IsType(OUTPUT_CT_BULLETPROOF) || pout->IsType(OUTPUT_RINGCT_BULLETPROOF)) {
+                    nTxValueOut += MAX_MONEY;
+                } else {
+                    int nExponent, nMantissa;
+                    CAmount nMin, nMax;
+                    if (GetRangeProofInfo(*(pout->GetPRangeproof()), nExponent, nMantissa, nMin, nMax) != 0)
+                        return state.DoS(100, error("ConnectBlock(): couldn't get range proof info\n",
+                                                    REJECT_INVALID, "bad-range-proof"));
+                    else
+                        nTxValueOut += nMax;
+                }
             }
         } else {
             if (tx.IsZerocoinSpend()) {
@@ -2834,20 +2860,29 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
         for (auto& pout : block.vtx[1]->vpout) {
             // Check that the max value doesn't exceed the creation limit, so we can
             // be sure the block doesn't generate generate more than it should
-            if (!(pout->IsType(OUTPUT_CT) || pout->IsType(OUTPUT_RINGCT)))
+            if (!(pout->IsType(OUTPUT_CT) || pout->IsType(OUTPUT_RINGCT)
+                  || pout->IsType(OUTPUT_CT_BULLETPROOF) || pout->IsType(OUTPUT_RINGCT_BULLETPROOF)))
                 continue;
 
-            if (pout->IsType(OUTPUT_RINGCT))
+            if (pout->IsType(OUTPUT_RINGCT) || pout->IsType(OUTPUT_RINGCT_BULLETPROOF))
                 state.fHasAnonOutput = true;
 
-            int nExponent, nMantissa;
-            CAmount nMin, nMax;
-            if (GetRangeProofInfo(*(pout->GetPRangeproof()), nExponent, nMantissa, nMin, nMax) != 0)
-                return state.DoS(100, error("ConnectBlock(): couldn't get range proof info\n",
-                                            REJECT_INVALID, "bad-range-proof"));
-            else {
-                nCreated += nMax;
-                nBlindFeePayout += nMax;
+            // Bulletproofs carry no exponent/mantissa header; the pinned 64-bit
+            // width caps the hidden value at the network money maximum. Legacy
+            // Borromean keeps the header parse for historical validation.
+            if (pout->IsType(OUTPUT_CT_BULLETPROOF) || pout->IsType(OUTPUT_RINGCT_BULLETPROOF)) {
+                nCreated += MAX_MONEY;
+                nBlindFeePayout += MAX_MONEY;
+            } else {
+                int nExponent, nMantissa;
+                CAmount nMin, nMax;
+                if (GetRangeProofInfo(*(pout->GetPRangeproof()), nExponent, nMantissa, nMin, nMax) != 0)
+                    return state.DoS(100, error("ConnectBlock(): couldn't get range proof info\n",
+                                                REJECT_INVALID, "bad-range-proof"));
+                else {
+                    nCreated += nMax;
+                    nBlindFeePayout += nMax;
+                }
             }
         }
 

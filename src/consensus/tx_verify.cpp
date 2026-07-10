@@ -276,13 +276,38 @@ bool CheckStandardOutput(CValidationState &state, const Consensus::Params& conse
     return CheckValue(state, p->nValue, nValueOut);
 }
 
+// Range-proof size caps. Legacy Borromean proofs are a fixed ~5134 bytes;
+// classic Bulletproofs (v1) are variable and much smaller (675B single, growing
+// only logarithmically with aggregation) -- cap generously for max aggregation.
+static const size_t BORROMEAN_MAX_LEN = 5134;
+static const size_t BULLETPROOF_MAX_LEN = 1024;
+
 bool CheckBlindOutput(CValidationState &state, const CTxOutCT *p)
 {
     if (p->vData.size() < 33 || p->vData.size() > 33 + 5)
         return state.DoS(100, false, REJECT_INVALID, "bad-ctout-ephem-size");
 
-    size_t nRangeProofLen = 5134;
-    if (p->vRangeproof.size() > nRangeProofLen)
+    if (p->nVersion == OUTPUT_CT_BULLETPROOF) {
+        if (p->vRangeproof.size() > BULLETPROOF_MAX_LEN)
+            return state.DoS(100, false, REJECT_INVALID, "bad-ctout-bp-size");
+
+        if (/*todo: fBusyImporting && */ fSkipRangeproof)
+            return true;
+
+        // nbits pinned to 64: the proven width IS the value ceiling (replaces the
+        // discarded Borromean min/max). n_commits=1 for a single output commitment.
+        int rv = secp256k1_bulletproof_rangeproof_verify(secp256k1_ctx_blind, blind_scratch, blind_bp_gens,
+                p->vRangeproof.data(), p->vRangeproof.size(), nullptr /*min_value=0*/, &p->commitment,
+                1 /*n_commits*/, 64 /*nbits*/, secp256k1_generator_h, nullptr, 0);
+
+        if (rv != 1)
+            return state.DoS(100, false, REJECT_INVALID, "bad-ctout-bp-verify");
+
+        return true;
+    }
+
+    // Legacy Borromean path (historical validation) -- unchanged.
+    if (p->vRangeproof.size() > BORROMEAN_MAX_LEN)
         return state.DoS(100, false, REJECT_INVALID, "bad-ctout-rangeproof-size");
 
 
@@ -304,8 +329,25 @@ bool CheckAnonOutput(CValidationState &state, const CTxOutRingCT *p)
     if (p->vData.size() < 33 || p->vData.size() > 33 + 5)
         return state.DoS(100, false, REJECT_INVALID, "bad-rctout-ephem-size");
 
-    size_t nRangeProofLen = 5134;
-    if (p->vRangeproof.size() > nRangeProofLen)
+    if (p->nVersion == OUTPUT_RINGCT_BULLETPROOF) {
+        if (p->vRangeproof.size() > BULLETPROOF_MAX_LEN)
+            return state.DoS(100, false, REJECT_INVALID, "bad-rctout-bp-size");
+
+        if (/* todo: fBusyImporting && */ fSkipRangeproof)
+            return true;
+
+        int rv = secp256k1_bulletproof_rangeproof_verify(secp256k1_ctx_blind, blind_scratch, blind_bp_gens,
+                p->vRangeproof.data(), p->vRangeproof.size(), nullptr /*min_value=0*/, &p->commitment,
+                1 /*n_commits*/, 64 /*nbits*/, secp256k1_generator_h, nullptr, 0);
+
+        if (rv != 1)
+            return state.DoS(100, false, REJECT_INVALID, "bad-rctout-bp-verify");
+
+        return true;
+    }
+
+    // Legacy Borromean path (historical validation) -- unchanged.
+    if (p->vRangeproof.size() > BORROMEAN_MAX_LEN)
         return state.DoS(100, false, REJECT_INVALID, "bad-rctout-rangeproof-size");
 
     if (/* todo: fBusyImporting && */ fSkipRangeproof)
@@ -374,11 +416,13 @@ bool CheckTransaction(const CTransaction& tx, CValidationState &state, bool fSki
                 break;
             }
             case OUTPUT_CT:
+            case OUTPUT_CT_BULLETPROOF:
                 if (!CheckBlindOutput(state, (CTxOutCT*) txout.get()))
                     return false;
                 nCTOut++;
                 break;
             case OUTPUT_RINGCT:
+            case OUTPUT_RINGCT_BULLETPROOF:
                 if (!CheckAnonOutput(state, (CTxOutRingCT*) txout.get()))
                     return false;
                 nRingCTOut++;

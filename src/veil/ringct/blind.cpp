@@ -13,6 +13,10 @@
 
 secp256k1_context *secp256k1_ctx_blind = nullptr;
 
+// Classic Bulletproofs backend state (allocated in ECC_Start_Blinding).
+secp256k1_scratch_space *blind_scratch = nullptr;
+secp256k1_bulletproof_generators *blind_bp_gens = nullptr;
+
 static int CountLeadingZeros(uint64_t nValueIn)
 {
     int nZeros = 0;
@@ -131,10 +135,30 @@ void ECC_Start_Blinding()
     }
 
     secp256k1_ctx_blind = ctx;
+
+    // Bulletproofs verification arena + NUMS generators. Allocated once here so
+    // consensus verification (CheckAnonOutput/CheckBlindOutput) never touches a
+    // null pointer. 4MB scratch is ample for block-wide batch verification; 256
+    // generators support 64-bit proofs aggregated up to 2 commitments.
+    blind_scratch = secp256k1_scratch_space_create(secp256k1_ctx_blind, 4 * 1024 * 1024);
+    assert(blind_scratch != nullptr);
+    blind_bp_gens = secp256k1_bulletproof_generators_create(secp256k1_ctx_blind, secp256k1_generator_h, 256);
+    assert(blind_bp_gens != nullptr);
 };
 
 void ECC_Stop_Blinding()
 {
+    if (blind_bp_gens)
+    {
+        secp256k1_bulletproof_generators_destroy(secp256k1_ctx_blind, blind_bp_gens);
+        blind_bp_gens = nullptr;
+    };
+    if (blind_scratch)
+    {
+        secp256k1_scratch_space_destroy(blind_scratch);
+        blind_scratch = nullptr;
+    };
+
     secp256k1_context *ctx = secp256k1_ctx_blind;
     secp256k1_ctx_blind = nullptr;
 
