@@ -22,9 +22,11 @@ enum OutputTypes
 {
     OUTPUT_NULL             = 0, // marker for CCoinsView (0.14)
     OUTPUT_STANDARD         = 1,
-    OUTPUT_CT               = 2,
-    OUTPUT_RINGCT           = 3,
+    OUTPUT_CT               = 2, // Legacy Borromean
+    OUTPUT_RINGCT           = 3, // Legacy Borromean
     OUTPUT_DATA             = 4,
+    OUTPUT_CT_BULLETPROOF   = 5, // NEW: Bulletproof range proof
+    OUTPUT_RINGCT_BULLETPROOF = 6, // NEW: Bulletproof RingCT
 };
 
 enum TransactionTypes
@@ -264,6 +266,51 @@ public:
     std::shared_ptr<CTxOutStandard> GetSharedPtr();
 };
 
+/**
+ * Data-carrying payload for Bulletproof outputs. Bulletproofs do not carry the
+ * value/blind/narration the way legacy Borromean range proofs did (via rewind),
+ * so the recipient recovers them from this encrypted field instead. The masks
+ * are derived by HKDF-SHA256 over the ECDH shared secret; integrity is bound by
+ * re-deriving the Pedersen commitment from the decrypted (amount, blind).
+ * Only present on OUTPUT_*_BULLETPROOF outputs (see conditional serialization).
+ */
+class CEcdhInfo
+{
+public:
+    uint8_t vchViewTag[1];           // Monero-style fast-scan reject tag
+    uint8_t vchAmount[8];            // masked CAmount (little-endian)
+    uint8_t vchBlind[32];            // masked blinding factor
+    std::vector<uint8_t> vNarration; // encrypted memo string (<= 32 bytes)
+
+    CEcdhInfo() { SetNull(); }
+
+    template<typename Stream>
+    void Serialize(Stream &s) const
+    {
+        s.write((char*)vchViewTag, 1);
+        s.write((char*)vchAmount, 8);
+        s.write((char*)vchBlind, 32);
+        s << vNarration;
+    }
+
+    template<typename Stream>
+    void Unserialize(Stream &s)
+    {
+        s.read((char*)vchViewTag, 1);
+        s.read((char*)vchAmount, 8);
+        s.read((char*)vchBlind, 32);
+        s >> vNarration;
+    }
+
+    void SetNull()
+    {
+        memset(vchViewTag, 0, 1);
+        memset(vchAmount, 0, 8);
+        memset(vchBlind, 0, 32);
+        vNarration.clear();
+    }
+};
+
 class CTxOutBase
 {
 public:
@@ -280,9 +327,11 @@ public:
                 s << *((CTxOutStandard*) this);
                 break;
             case OUTPUT_CT:
+            case OUTPUT_CT_BULLETPROOF:
                 s << *((CTxOutCT*) this);
                 break;
             case OUTPUT_RINGCT:
+            case OUTPUT_RINGCT_BULLETPROOF:
                 s << *((CTxOutRingCT*) this);
                 break;
             case OUTPUT_DATA:
@@ -302,9 +351,11 @@ public:
                 s >> *((CTxOutStandard*) this);
                 break;
             case OUTPUT_CT:
+            case OUTPUT_CT_BULLETPROOF:
                 s >> *((CTxOutCT*) this);
                 break;
             case OUTPUT_RINGCT:
+            case OUTPUT_RINGCT_BULLETPROOF:
                 s >> *((CTxOutRingCT*) this);
                 break;
             case OUTPUT_DATA:
@@ -445,6 +496,9 @@ public:
     std::vector<uint8_t> vData; // first 33 bytes is always ephemeral pubkey, can contain token for stealth prefix matching
     CScript scriptPubKey;
     std::vector<uint8_t> vRangeproof;
+    CEcdhInfo ecdhInfo; // only serialized for OUTPUT_CT_BULLETPROOF
+
+    bool IsBulletproof() const { return nVersion == OUTPUT_CT_BULLETPROOF; }
 
     template<typename Stream>
     void Serialize(Stream &s) const
@@ -453,6 +507,8 @@ public:
         s << vData;
         s << *(CScriptBase*)(&scriptPubKey);
         s << vRangeproof;
+        if (IsBulletproof())
+            s << ecdhInfo;
     }
 
     template<typename Stream>
@@ -462,6 +518,8 @@ public:
         s >> vData;
         s >> *(CScriptBase*)(&scriptPubKey);
         s >> vRangeproof;
+        if (IsBulletproof())
+            s >> ecdhInfo;
     }
 
     void SetNull() override
@@ -470,6 +528,7 @@ public:
         vData.clear();
         scriptPubKey.clear();
         vRangeproof.clear();
+        ecdhInfo.SetNull();
     }
 
     bool PutValue(std::vector<uint8_t> &vchAmount) const override
@@ -511,8 +570,9 @@ public:
     std::vector<uint8_t> vData; // first 33 bytes is always ephemeral pubkey, can contain token for stealth prefix matching
     secp256k1_pedersen_commitment commitment;
     std::vector<uint8_t> vRangeproof;
+    CEcdhInfo ecdhInfo; // only serialized for OUTPUT_RINGCT_BULLETPROOF
 
-
+    bool IsBulletproof() const { return nVersion == OUTPUT_RINGCT_BULLETPROOF; }
 
     template<typename Stream>
     void Serialize(Stream &s) const
@@ -521,6 +581,8 @@ public:
         s.write((char*)&commitment.data[0], 33);
         s << vData;
         s << vRangeproof;
+        if (IsBulletproof())
+            s << ecdhInfo;
     }
 
     template<typename Stream>
@@ -530,6 +592,8 @@ public:
         s.read((char*)&commitment.data[0], 33);
         s >> vData;
         s >> vRangeproof;
+        if (IsBulletproof())
+            s >> ecdhInfo;
     }
 
     void SetNull() override
@@ -538,6 +602,7 @@ public:
         vData.clear();
         commitment = secp256k1_pedersen_commitment();
         vRangeproof.clear();
+        ecdhInfo.SetNull();
     }
 
     bool PutValue(std::vector<uint8_t> &vchAmount) const override
@@ -696,9 +761,11 @@ inline void UnserializeTransaction(TxType& tx, Stream& s) {
                 tx.vpout[k] = MAKE_OUTPUT<CTxOutStandard>();
                 break;
             case OUTPUT_CT:
+            case OUTPUT_CT_BULLETPROOF:
                 tx.vpout[k] = MAKE_OUTPUT<CTxOutCT>();
                 break;
             case OUTPUT_RINGCT:
+            case OUTPUT_RINGCT_BULLETPROOF:
                 tx.vpout[k] = MAKE_OUTPUT<CTxOutRingCT>();
                 break;
             case OUTPUT_DATA:

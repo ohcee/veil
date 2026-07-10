@@ -100,14 +100,16 @@ std::string CTxOutBase::ToString() const
             return strprintf("CTxOutData(data=%s)", HexStr(dout->vData).substr(0, 30));
         }
         case OUTPUT_CT:
+        case OUTPUT_CT_BULLETPROOF:
         {
             CTxOutCT *cto = (CTxOutCT*)this;
-            return strprintf("CTxOutCT(data=%s, scriptPubKey=%s)", HexStr(cto->vData).substr(0, 30), HexStr(cto->scriptPubKey).substr(0, 30));
+            return strprintf("CTxOutCT(v=%d, data=%s, scriptPubKey=%s)", nVersion, HexStr(cto->vData).substr(0, 30), HexStr(cto->scriptPubKey).substr(0, 30));
         }
         case OUTPUT_RINGCT:
+        case OUTPUT_RINGCT_BULLETPROOF:
         {
             CTxOutRingCT *rcto = (CTxOutRingCT*)this;
-            return strprintf("CTxOutRingCT(data=%s, pk=%s)", HexStr(rcto->vData).substr(0, 30), HexStr(rcto->pk).substr(0, 30));
+            return strprintf("CTxOutRingCT(v=%d, data=%s, pk=%s)", nVersion, HexStr(rcto->vData).substr(0, 30), HexStr(rcto->pk).substr(0, 30));
         }
         default:
             break;
@@ -141,12 +143,14 @@ void DeepCopy(CTxOutBaseRef &to, const CTxOutBaseRef &from)
             *((CTxOutStandard*)to.get()) = *((CTxOutStandard*)from.get());
             break;
         case OUTPUT_CT:
+        case OUTPUT_CT_BULLETPROOF:
             to = MAKE_OUTPUT<CTxOutCT>();
-            *((CTxOutCT*)to.get()) = *((CTxOutCT*)from.get());
+            *((CTxOutCT*)to.get()) = *((CTxOutCT*)from.get()); // copies nVersion + ecdhInfo
             break;
         case OUTPUT_RINGCT:
+        case OUTPUT_RINGCT_BULLETPROOF:
             to = MAKE_OUTPUT<CTxOutRingCT>();
-            *((CTxOutRingCT*)to.get()) = *((CTxOutRingCT*)from.get());
+            *((CTxOutRingCT*)to.get()) = *((CTxOutRingCT*)from.get()); // copies nVersion + ecdhInfo
             break;
         case OUTPUT_DATA:
             to = MAKE_OUTPUT<CTxOutData>();
@@ -193,7 +197,7 @@ std::shared_ptr<CTxOutStandard> CTxOut::GetSharedPtr()
     OUTPUT_PTR<CTxOutStandard> p = MAKE_OUTPUT<CTxOutStandard>();
     p->scriptPubKey = scriptPubKey;
     p->nValue = nValue;
-    return std::move(p);
+    return p;
 }
 
 std::string CTxOut::ToString() const
