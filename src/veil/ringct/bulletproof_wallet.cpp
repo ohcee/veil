@@ -61,7 +61,7 @@ void ChaChaXor(const uint8_t key[32], const uint8_t* in, uint8_t* out, size_t le
     c.SetIV(0);
     c.Seek(0);
     std::vector<uint8_t> ks(len);
-    c.Output(ks.data(), ks.size());
+    c.Keystream(ks.data(), ks.size());
     for (size_t i = 0; i < len; ++i) out[i] = in[i] ^ ks[i];
     memory_cleanse(ks.data(), ks.size());
 }
