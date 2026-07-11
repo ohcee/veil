@@ -259,9 +259,9 @@ CAmount CTransaction::GetPlainValueOut(size_t &nStandard, size_t &nCT, size_t &n
     CAmount nValueOut = 0;
 
     for (const auto &txout : vpout) {
-        if (txout->IsType(OUTPUT_CT)) {
+        if (txout->IsType(OUTPUT_CT) || txout->IsType(OUTPUT_CT_BULLETPROOF)) {
             nCT++;
-        } else if (txout->IsType(OUTPUT_RINGCT)) {
+        } else if (txout->IsType(OUTPUT_RINGCT) || txout->IsType(OUTPUT_RINGCT_BULLETPROOF)) {
             nRingCT++;
         }
 
@@ -310,7 +310,7 @@ bool CTransaction::IsCoinStake() const
     if (vin.empty())
         return false;
 
-    if (vin.size() != 1 || !vin[0].IsZerocoinSpend())
+    if (vin.size() != 1 || !(vin[0].IsZerocoinSpend() || vin[0].IsAnonInput()))
         return false;
 
     // the coin stake transaction is marked with the first output empty
@@ -325,7 +325,8 @@ bool CTransaction::HasBlindedValues() const
     }
 
     for (const auto& pout : vpout) {
-        if (pout->IsType(OUTPUT_CT) || pout->IsType(OUTPUT_RINGCT))
+        if (pout->IsType(OUTPUT_CT) || pout->IsType(OUTPUT_RINGCT)
+            || pout->IsType(OUTPUT_CT_BULLETPROOF) || pout->IsType(OUTPUT_RINGCT_BULLETPROOF))
             return true;
     }
 
@@ -340,6 +341,15 @@ bool CTransaction::IsZerocoinMint() const
             if (script.IsZerocoinMint())
                 return true;
         }
+    }
+    return false;
+}
+
+bool CTransaction::IsRingCtSpend() const
+{
+    for (const CTxIn& in : vin) {
+        if (in.IsAnonInput())
+            return true;
     }
     return false;
 }

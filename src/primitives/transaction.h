@@ -883,6 +883,7 @@ public:
 
     bool IsCoinStake() const;
 
+    bool IsRingCtSpend() const;
     bool IsZerocoinSpend() const;
 
     bool IsZerocoinMint() const;

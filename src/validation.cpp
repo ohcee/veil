@@ -194,7 +194,9 @@ public:
     bool AcceptBlockHeader(const CBlockHeader& block, CValidationState& state, const CChainParams& chainparams,
             CBlockIndex** ppindex, bool fProofOfStake, bool fProofOfFullNode, int nMaxHeightNoPoWScore) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
     bool AcceptBlock(const std::shared_ptr<const CBlock>& pblock, CValidationState& state, const CChainParams& chainparams, CBlockIndex** ppindex, bool fRequested, const CDiskBlockPos* dbp, bool* fNewBlock) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
-    bool ContextualCheckZerocoinStake(CBlockIndex* pindex, CStakeInput* stake);
+    bool ContextualCheckStake(CBlockIndex* pindex, CStakeInput* stake);
+    bool ContextualCheckRingCTStake(CBlockIndex* pindex, PublicRingCTStake* stake);
+    bool ContextualCheckZerocoinStake(CBlockIndex* pindex, ZerocoinStake* stake);
 
     // Block (dis)connection on a given view:
     DisconnectResult DisconnectBlock(const CBlock& block, const CBlockIndex* pindex, CCoinsViewCache& view);
@@ -1980,7 +1982,7 @@ DisconnectResult CChainState::DisconnectBlock(const CBlock& block, const CBlockI
 
             const CTxOutBase *out = tx.vpout[k].get();
 
-            if (out->IsType(OUTPUT_RINGCT)) {
+            if (out->IsType(OUTPUT_RINGCT) || out->IsType(OUTPUT_RINGCT_BULLETPROOF)) {
                 CTxOutRingCT *txout = (CTxOutRingCT*)out;
 
                 if (view.nLastRCTOutput == 0) {
@@ -2006,7 +2008,7 @@ DisconnectResult CChainState::DisconnectBlock(const CBlock& block, const CBlockI
 
             // Check that all outputs are available and match the outputs in the block itself
             // exactly.
-            if (out->IsType(OUTPUT_STANDARD) || out->IsType(OUTPUT_CT)) {
+            if (out->IsType(OUTPUT_STANDARD) || out->IsType(OUTPUT_CT) || out->IsType(OUTPUT_CT_BULLETPROOF)) {
                 const CScript *pScript = out->GetPScriptPubKey();
                 if (!pScript->IsUnspendable()) {
                     COutPoint op(hash, k);
@@ -2267,6 +2269,16 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
         }
         return error("%s: Consensus::CheckBlock: %s", __func__, FormatStateMessage(state));
     }
+
+    // Check the RingCT stake signature (if any). This must happen at connect
+    // time rather than in CheckBlock because verification requires the RCT
+    // output index, which is only complete once all prior blocks have been
+    // connected and flushed (see FlushView in ConnectTip). At this point the
+    // check is deterministic, so a failure is definitive and the block is
+    // marked invalid.
+    if (block.IsProofOfStake() && !veil::ValidateRingCTBlockSignature(block))
+        return state.DoS(100, false, REJECT_INVALID, "bad-block-sig", false, "RingCT PoS block signature not valid");
+
     int64_t nTimeCheckBlock = GetTimeMicros() - nTimeStart;
 
     // verify that the view's current state corresponds to the previous block
@@ -2444,6 +2456,13 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
     bool fZCLimpMode = tstate == ThresholdState::ACTIVE;
     bool fCheckBlacklistHard = pindex->nHeight >= Params().HeightEnforceBlacklist();
 
+    CAmount networkReward = pindex->nNetworkRewardReserve > Params().MaxNetworkReward() ? Params().MaxNetworkReward() : pindex->nNetworkRewardReserve;
+
+    // The block rewards are stratified based upon the height of the block.
+    CAmount nBlockReward, nFounderPayment, nFoundationPayment, nBudgetPayment = 0;
+    veil::Budget().GetBlockRewards(pindex->nHeight, nBlockReward, nFounderPayment, nFoundationPayment, nBudgetPayment);
+    CAmount nExpStakeReward = networkReward + nBlockReward;
+
     CAmount nBlockValueIn = 0;
     CAmount nBlockValueOut = 0;
     int64_t nTimeZerocoinSpendCheck = 0;
@@ -2492,6 +2511,21 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
         CAmount nTxValueOut = 0;
         if (tx.IsCoinBase() && !tx.HasBlindedValues()) {
             nTxValueOut += tx.GetValueOut();
+        } else if (tx.IsCoinBase() && block.IsProofOfStake() && pindex->nHeight >= Params().HeightRingCTStaking()) {
+            // covers ringct stakes: the blinded reward outputs must commit to
+            // exactly the expected stake reward. Gated on the RingCT staking
+            // activation height so that before activation a blinded PoS
+            // coinbase falls through to the rejection below, preserving the
+            // bad-cb-stealth-ringct rule for stakers as well as miners.
+            if (!VerifyCoinbase(nExpStakeReward, tx, state))
+                return false;
+            nTxValueOut += nExpStakeReward;
+            // CheckTxInputs never runs for a coinbase, so nothing else sets
+            // this flag for vtx[0]. Without it the RingCT reward outputs are
+            // skipped by the "Index rct outputs and keyimages" block below and
+            // never enter the anon output index, leaving the stake rewards
+            // unspendable and desynchronizing nAnonOutputs.
+            state.fHasAnonOutput = true;
         } else if (tx.IsCoinBase()) {
             if (pindex->nHeight >= Params().HeightRejectStealthOrRingCTCoinbase()) {
                 return state.DoS(100, error("ConnectBlock(): coinbase contains stealth or RingCT outputs\n"),
@@ -2524,7 +2558,7 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
                 } else {
                     int nExponent, nMantissa;
                     CAmount nMin, nMax;
-                    if (GetRangeProofInfo(*(pout->GetPRangeproof()), nExponent, nMantissa, nMin, nMax) != 0)
+                    if (!GetRangeProofInfo(*(pout->GetPRangeproof()), nExponent, nMantissa, nMin, nMax))
                         return state.DoS(100, error("ConnectBlock(): couldn't get range proof info\n",
                                                     REJECT_INVALID, "bad-range-proof"));
                     else
@@ -2738,7 +2772,7 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
             }
 
             for (unsigned int k = 0; k < tx.vpout.size(); k++) {
-                if (!tx.vpout[k]->IsType(OUTPUT_RINGCT))
+                if (!(tx.vpout[k]->IsType(OUTPUT_RINGCT) || tx.vpout[k]->IsType(OUTPUT_RINGCT_BULLETPROOF)))
                     continue;
 
                 CTxOutRingCT *txout = (CTxOutRingCT*)tx.vpout[k].get();
@@ -2827,12 +2861,8 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
     if (!mapSpends.empty())
         LogPrint(BCLog::BENCH, "      - Check zerocoin spends: %.2fms\n", MILLI * nTimeZerocoinSpendCheck);
 
-    CAmount networkReward = pindex->nNetworkRewardReserve > Params().MaxNetworkReward() ? Params().MaxNetworkReward() : pindex->nNetworkRewardReserve;
     pindex->nNetworkRewardReserve -= networkReward;
 
-    // The block rewards are stratified based upon the height of the block.
-    CAmount nBlockReward, nFounderPayment, nFoundationPayment, nBudgetPayment = 0;
-    veil::Budget().GetBlockRewards(pindex->nHeight, nBlockReward, nFounderPayment, nFoundationPayment, nBudgetPayment);
 
     //Check proof of full node
     if (!fSkipComputation && (block.fProofOfFullNode || block.hashPoFN != uint256())) {
@@ -2854,45 +2884,54 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
     CAmount nCreated = nBlockValueOut - nBlockValueIn;
 
     // Check change doesn't exceed fees and that only PoFN blocks have blind txouts
-    if ((block.fProofOfFullNode || block.hashPoFN != uint256()) && block.vtx[1]->HasBlindedValues()) {
-        // This should consist only of block fees, so it should be <= nFees
-        CAmount nBlindFeePayout = 0;
-        for (auto& pout : block.vtx[1]->vpout) {
-            // Check that the max value doesn't exceed the creation limit, so we can
-            // be sure the block doesn't generate generate more than it should
-            if (!(pout->IsType(OUTPUT_CT) || pout->IsType(OUTPUT_RINGCT)
-                  || pout->IsType(OUTPUT_CT_BULLETPROOF) || pout->IsType(OUTPUT_RINGCT_BULLETPROOF)))
-                continue;
+    if ((block.fProofOfFullNode || block.hashPoFN != uint256())) {
+        if (block.vtx[0]->HasBlindedValues()) {
+            // ringctstake currently has no mechanism for claiming fees; the
+            // coinstake reward value is bound separately by VerifyCoinbase below.
+        } else if (block.vtx[1]->HasBlindedValues()) {
+            // This should consist only of block fees, so it should be <= nFees
+            CAmount nBlindFeePayout = 0;
+            for (auto& pout : block.vtx[1]->vpout) {
+                // Check that the max value doesn't exceed the creation limit, so we can
+                // be sure the block doesn't generate generate more than it should
+                if (!(pout->IsType(OUTPUT_CT) || pout->IsType(OUTPUT_RINGCT)
+                      || pout->IsType(OUTPUT_CT_BULLETPROOF) || pout->IsType(OUTPUT_RINGCT_BULLETPROOF)))
+                    continue;
 
-            if (pout->IsType(OUTPUT_RINGCT) || pout->IsType(OUTPUT_RINGCT_BULLETPROOF))
-                state.fHasAnonOutput = true;
+                if (pout->IsType(OUTPUT_RINGCT) || pout->IsType(OUTPUT_RINGCT_BULLETPROOF))
+                    state.fHasAnonOutput = true;
 
-            // Bulletproofs carry no exponent/mantissa header; the pinned 64-bit
-            // width caps the hidden value at the network money maximum. Legacy
-            // Borromean keeps the header parse for historical validation.
-            if (pout->IsType(OUTPUT_CT_BULLETPROOF) || pout->IsType(OUTPUT_RINGCT_BULLETPROOF)) {
-                nCreated += MAX_MONEY;
-                nBlindFeePayout += MAX_MONEY;
-            } else {
-                int nExponent, nMantissa;
-                CAmount nMin, nMax;
-                if (GetRangeProofInfo(*(pout->GetPRangeproof()), nExponent, nMantissa, nMin, nMax) != 0)
-                    return state.DoS(100, error("ConnectBlock(): couldn't get range proof info\n",
-                                                REJECT_INVALID, "bad-range-proof"));
-                else {
-                    nCreated += nMax;
-                    nBlindFeePayout += nMax;
+                // Bulletproofs carry no exponent/mantissa header; the pinned 64-bit
+                // width caps the hidden value at the network money maximum. Legacy
+                // Borromean keeps the header parse for historical validation.
+                if (pout->IsType(OUTPUT_CT_BULLETPROOF) || pout->IsType(OUTPUT_RINGCT_BULLETPROOF)) {
+                    nCreated += MAX_MONEY;
+                    nBlindFeePayout += MAX_MONEY;
+                } else {
+                    int nExponent, nMantissa;
+                    CAmount nMin, nMax;
+                    if (!GetRangeProofInfo(*(pout->GetPRangeproof()), nExponent, nMantissa, nMin, nMax))
+                        return state.DoS(100, error("ConnectBlock(): couldn't get range proof info\n",
+                                                    REJECT_INVALID, "bad-range-proof"));
+                    else {
+                        nCreated += nMax;
+                        nBlindFeePayout += nMax;
+                    }
                 }
             }
-        }
 
-        if (nBlindFeePayout > nFees)
-            return state.DoS(100, error("ConnectBlock(): blind fee payout is too large\n",
-                                        REJECT_INVALID, "bad-cs-amount"));
+            if (nBlindFeePayout > nFees)
+                return state.DoS(100, error("ConnectBlock(): blind fee payout is too large\n"),
+                                            REJECT_INVALID, "bad-cs-amount");
+        }
     } else if (block.IsProofOfStake() && block.vtx[1]->HasBlindedValues()) {
-        return state.DoS(100, error("ConnectBlock(): coinstake without proof of full node has blinded values\n",
-                                    REJECT_INVALID, "bad-cs-txout"));
+        return state.DoS(100, error("ConnectBlock(): coinstake without proof of full node has blinded values\n"),
+                                    REJECT_INVALID, "bad-cs-txout");
     }
+
+    // check ringct coinbase
+    if (block.IsProofOfStake() && block.vtx[0]->HasBlindedValues() && !VerifyCoinbase(nExpStakeReward, *block.vtx[0], state))
+        return false;
 
     if (nCreated > nCreationLimit) {
         LogPrintf("%s : BlockReward=%s Network=%s Founder=%s Budget=%s Foundation=%s\n", __func__, FormatMoney(nBlockReward),
@@ -4317,7 +4356,9 @@ bool CheckBlock(const CBlock& block, CValidationState& state, const Consensus::P
         return false;
     }
 
-    // Check the block signature if it is a proof of stake block
+    // Check the block signature if it is a proof of stake block.
+    // RingCT stake signatures are validated at connect time instead (see
+    // ConnectBlock), as they require a complete RCT output index.
     if (block.IsProofOfStake() && !veil::ValidateBlockSignature(block))
         return state.DoS(100, false, REJECT_INVALID, "bad-block-sig", true, "PoS block signature not valid");
 
@@ -4821,17 +4862,29 @@ static bool ContextualCheckBlock(const CBlock& block, CValidationState& state, c
     }
 
     if (block.IsProofOfStake()) {
+        size_t expVpSize = 1;
+        if (block.vtx[1]->IsRingCtSpend()) {
+            if (nHeight < Params().HeightRingCTStaking())
+                return state.DoS(50, false, REJECT_INVALID, "ringct-stake", false, strprintf("RingCT PoS not allowed until height %d", Params().HeightRingCTStaking()));
+            // might be covered elsewhere?
+            if (!block.vtx[1]->IsCoinStake())
+                return state.DoS(50, false, REJECT_INVALID, "bad-coinstake-txn", false, strprintf("RingCT PoS has invalid coinstake tx"));
+            // two ringct outputs
+            expVpSize += 2;
+        }
         if (!veil::BudgetParams::IsSuperBlock(pindexPrev->nHeight + 1))
         {
-            if (block.vtx[0]->vpout.size() != 1)
+            if (block.vtx[0]->vpout.size() != expVpSize)
+                return state.DoS(50, false, REJECT_INVALID, "bad-coinbase-vpout", false, strprintf("PoS non-superblock has invalid coinbase out"));
+            if (block.vtx[0]->vpout[0]->nVersion != OUTPUT_STANDARD)
                 return state.DoS(50, false, REJECT_INVALID, "bad-coinbase-vpout", false, strprintf("PoS non-superblock has invalid coinbase out"));
 
             auto pTxBase = ((CTxOutStandard*) &*(block.vtx[0]->vpout[0]));
-            if (pTxBase->nValue != 0 || pTxBase->scriptPubKey != CScript() || pTxBase->nVersion != OUTPUT_STANDARD)
+            if (pTxBase->nValue != 0 || pTxBase->scriptPubKey != CScript())
                 return state.DoS(50, false, REJECT_INVALID, "bad-coinbase-vpout", false, strprintf("PoS non-superblock has invalid coinbase out"));
         } else {
             // next block is a superblock
-            if (block.vtx[0]->vpout.size() > 3)
+            if (block.vtx[0]->vpout.size() > expVpSize + 2 || block.vtx[0]->vpout.size() < expVpSize)
                 return state.DoS(50, false, REJECT_INVALID, "bad-coinbase-vpout", false, strprintf("PoS superblock has invalid coinbase out"));
         }
     }
@@ -4993,33 +5046,75 @@ static CDiskBlockPos SaveBlockToDisk(const CBlock& block, int nHeight, const CCh
     return blockPos;
 }
 
-bool CChainState::ContextualCheckZerocoinStake(CBlockIndex* pindex, CStakeInput* stake)
+bool CChainState::ContextualCheckStake(CBlockIndex* pindex, CStakeInput* stake)
 {
-    if (ZerocoinStake* stakeCheck = dynamic_cast<ZerocoinStake*>(stake)) {
-        CBlockIndex* pindexFrom = stakeCheck->GetIndexFrom();
-        if (!pindexFrom)
-            return error("%s: failed to get index associated with zerocoin stake checksum", __func__);
+    switch (stake->GetType()) {
+        case STAKE_ZEROCOIN:
+        {
+            ZerocoinStake* stakeZerocoin = dynamic_cast<ZerocoinStake*>(stake);
+            if (!stakeZerocoin)
+                return false;
 
-        int nRequiredDepth = Params().Zerocoin_RequiredStakeDepth();
-        if (pindex->nHeight >= Params().HeightLightZerocoin())
-            nRequiredDepth = Params().Zerocoin_RequiredStakeDepthV2();
+            return ContextualCheckZerocoinStake(pindex, stakeZerocoin);
+        }
+        case STAKE_RINGCT:
+        {
+            PublicRingCTStake* stakeRCT = dynamic_cast<PublicRingCTStake*>(stake);
+            if (!stakeRCT)
+                return false;
 
-        if (pindex->nHeight - pindexFrom->nHeight < nRequiredDepth)
-            return error("%s: zerocoin stake does not have required confirmation depth", __func__);
-
-        //The checksum needs to be the exact checksum from the modifier height
-        libzerocoin::CoinDenomination denom = libzerocoin::AmountToZerocoinDenomination(stakeCheck->GetValue());
-        int nHeightStake = pindex->nHeight - nRequiredDepth;
-        CBlockIndex* pindexFrom2 = pindex->GetAncestor(nHeightStake);
-        if (!pindexFrom2)
-            return error("%s: block ancestor does not exist", __func__);
-
-        uint256 hashCheckpoint = pindexFrom2->GetAccumulatorHash(denom);
-        if (hashCheckpoint != stakeCheck->GetChecksum())
-            return error("%s: accumulator checksum is different than the modifier block. indexfromheight=%d stake=%s blockfrom=%s", __func__, pindexFrom->nHeight, stakeCheck->GetChecksum().GetHex(), hashCheckpoint.GetHex());
-    } else {
-        return error("%s: dynamic_cast of stake ptr failed", __func__);
+            return ContextualCheckRingCTStake(pindex, stakeRCT);
+        }
     }
+    return error("%s: Invalid stake type %d block height %d", __func__, stake->GetType(), pindex->nHeight);
+}
+
+bool CChainState::ContextualCheckRingCTStake(CBlockIndex* pindex, PublicRingCTStake* stake)
+{
+    // Check that all included inputs are beyond the minimum stake age
+    const std::vector<COutPoint>& vAnonInputs = stake->GetTxInputs();
+    for (const COutPoint& input : vAnonInputs) {
+        CTransactionRef ptxPrev;
+        int nHeightTx = 0;
+        if (!IsTransactionInChain(input.hash, nHeightTx, ptxPrev, Params().GetConsensus(), pindex))
+            return error("%s: could not find tx %s within the same chain", __func__, input.hash.GetHex());
+        if (nHeightTx == 0 || nHeightTx > pindex->nHeight - Params().RingCT_RequiredStakeDepth())
+            return error("%s: included RingCT input is not below the required stake depth : %s", __func__, input.ToString());
+        if (ptxPrev->vpout.size() <= input.n)
+            return error("%s: RingCT Input %s does not exist", input.ToString());
+
+        //Check that it is a ringct output
+        const CTxOutBaseRef txbout = ptxPrev->vpout[input.n];
+        if (txbout->GetType() != OUTPUT_RINGCT)
+            return error ("%s: RingCT Input %s is not a ringct output type", __func__, input.ToString());
+    }
+    // Stake hash check elsewhere confirms that the stake value is above the minimum
+    return true;
+}
+
+bool CChainState::ContextualCheckZerocoinStake(CBlockIndex* pindex, ZerocoinStake* stake)
+{
+    const CBlockIndex* pindexFrom = stake->GetIndexFrom(pindex);
+    if (!pindexFrom)
+        return error("%s: failed to get index associated with zerocoin stake checksum", __func__);
+
+    int nRequiredDepth = Params().Zerocoin_RequiredStakeDepth();
+    if (pindex->nHeight >= Params().HeightLightZerocoin())
+        nRequiredDepth = Params().Zerocoin_RequiredStakeDepthV2();
+
+    if (pindex->nHeight - pindexFrom->nHeight < nRequiredDepth)
+        return error("%s: zerocoin stake does not have required confirmation depth", __func__);
+
+    //The checksum needs to be the exact checksum from the modifier height
+    libzerocoin::CoinDenomination denom = libzerocoin::AmountToZerocoinDenomination(stake->GetValue());
+    int nHeightStake = pindex->nHeight - nRequiredDepth;
+    CBlockIndex* pindexFrom2 = pindex->GetAncestor(nHeightStake);
+    if (!pindexFrom2)
+        return error("%s: block ancestor does not exist", __func__);
+
+    uint256 hashCheckpoint = pindexFrom2->GetAccumulatorHash(denom);
+    if (hashCheckpoint != stake->GetChecksum())
+        return error("%s: accumulator checksum is different than the modifier block. indexfromheight=%d stake=%s blockfrom=%s", __func__, pindexFrom->nHeight, stake->GetChecksum().GetHex(), hashCheckpoint.GetHex());
 
     return true;
 }
@@ -5056,8 +5151,8 @@ bool CChainState::AcceptBlock(const std::shared_ptr<const CBlock>& pblock, CVali
         if (!stake)
             return error("%s: null stake ptr", __func__);
 
-        if (!ContextualCheckZerocoinStake(pindex, stake.get()))
-            return state.DoS(100, error("%s: zerocoin stake fails context checks", __func__));
+        if (!ContextualCheckStake(pindex, stake.get()))
+            return state.DoS(100, error("%s: stake fails context checks", __func__));
 
         // This stake has already been seen in a different block, prevent disk-space attack by requiring valid PoW block header
         uint256 hashBlock = block.GetHash();

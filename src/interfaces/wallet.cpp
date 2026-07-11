@@ -222,6 +222,8 @@ WalletTx MakeWalletTx(CWallet& wallet, const CWalletTx& wtx)
         CBlockIndex* pindex = LookupBlockIndex(wtx.hashBlock);
         if (pindex) {
             result.nPowType = pindex->nVersion & (CBlockHeader::PROGPOW_BLOCK | CBlockHeader::RANDOMX_BLOCK | CBlockHeader::SHA256D_BLOCK);
+            // The coinbase of a PoS block carries the stake reward
+            result.is_stake_reward = pindex->IsProofOfStake();
         }
     }
 

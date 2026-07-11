@@ -147,7 +147,7 @@ void AddRangeproof(const std::vector<uint8_t> &vRangeproof, UniValue &entry)
     {
         int exponent, mantissa;
         CAmount min_value, max_value;
-        if (0 == GetRangeProofInfo(vRangeproof, exponent, mantissa, min_value, max_value))
+        if (GetRangeProofInfo(vRangeproof, exponent, mantissa, min_value, max_value))
         {
             entry.pushKV("rp_exponent", exponent);
             entry.pushKV("rp_mantissa", mantissa);

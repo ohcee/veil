@@ -95,10 +95,13 @@ void AddCoins(CCoinsViewCache& cache, const CTransaction &tx, int nHeight, bool 
         if (out->IsType(OUTPUT_STANDARD)) {
             CTxOut txout(out->GetValue(), *out->GetPScriptPubKey());
             coin = Coin(txout, nHeight, fCoinbase);
-        } else if (out->IsType(OUTPUT_CT)) {
+        } else if (out->IsType(OUTPUT_CT) || out->IsType(OUTPUT_CT_BULLETPROOF)) {
             CAmount nV = 0;
             CTxOut txout(nV, *out->GetPScriptPubKey());
             coin = Coin(txout, nHeight, fCoinbase);
+            // Normalize bulletproof CT coins to OUTPUT_CT: the UTXO layer only
+            // needs the commitment, which is identical in form, and spending
+            // paths dispatch on coin.nType == OUTPUT_CT.
             coin.nType = OUTPUT_CT;
             coin.commitment = ((CTxOutCT*)out)->commitment;
         } else {

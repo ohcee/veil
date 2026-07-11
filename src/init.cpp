@@ -497,6 +497,8 @@ void SetupServerArgs()
     gArgs.AddArg("-dnsseed", "Query for peer addresses via DNS lookup, if low on addresses (default: 1 unless -connect used)", false, OptionsCategory::CONNECTION);
     gArgs.AddArg("-enablebip61", strprintf("Send reject messages per BIP61 (default: %u)", DEFAULT_ENABLE_BIP61), false, OptionsCategory::CONNECTION);
     gArgs.AddArg("-exchangesandservicesmode", "Opt out of staking, zerocoin automint, and Dandelion (default: 0)", false, OptionsCategory::OPTIONS);
+    gArgs.AddArg("-stakezerocoin", "Enable or disable zerocoin staking (default: 1)", false, OptionsCategory::OPTIONS);
+    gArgs.AddArg("-stakeringct", "Enable or disable RingCT staking (default: 1)", false, OptionsCategory::OPTIONS);
     gArgs.AddArg("-externalip=<ip>", "Specify your own public address", false, OptionsCategory::CONNECTION);
     gArgs.AddArg("-forcednsseed", strprintf("Always query for peer addresses via DNS lookup (default: %u)", DEFAULT_FORCEDNSSEED), false, OptionsCategory::CONNECTION);
     gArgs.AddArg("-listen", "Accept connections from outside (default: 1 if no -proxy or -connect)", false, OptionsCategory::CONNECTION);
