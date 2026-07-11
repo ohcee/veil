@@ -876,7 +876,7 @@ public:
         nKernelModulus = 10;
         nCoinbaseMaturity = 10;
         nHeightRejectStealthOrRingCTCoinbase = 0;
-        nHeightEnableBulletproofs = 2000000000; // dormant: set a real activation height when the fork is scheduled
+        nHeightEnableBulletproofs = 2; // regtest: bulletproofs active almost from genesis so the BP path is the default under test
         nProofOfFullNodeRounds = 4;
         nLastPOWBlock = 9816000; // Continue POW until supply creation ends
         nHeightSupplyCreationStop = 9816000; //Should create very close to 300m coins at this time

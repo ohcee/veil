@@ -413,6 +413,7 @@ public:
 
     virtual secp256k1_pedersen_commitment *GetPCommitment() { return nullptr; };
     virtual std::vector<uint8_t> *GetPRangeproof() { return nullptr; };
+    virtual CEcdhInfo *GetPEcdhInfo() { return nullptr; };
 
     virtual bool GetCTFee(CAmount &nFee) const { return false; };
     virtual bool SetCTFee(CAmount &nFee) { return false; };
@@ -560,6 +561,11 @@ public:
     {
         return &vRangeproof;
     }
+
+    CEcdhInfo *GetPEcdhInfo() override
+    {
+        return &ecdhInfo;
+    }
 };
 
 class CTxOutRingCT : public CTxOutBase
@@ -620,6 +626,11 @@ public:
     std::vector<uint8_t> *GetPRangeproof() override
     {
         return &vRangeproof;
+    }
+
+    CEcdhInfo *GetPEcdhInfo() override
+    {
+        return &ecdhInfo;
     }
 
     bool SetScriptPubKey(const CScript& scriptPubKey) override { return false; }

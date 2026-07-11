@@ -24,6 +24,7 @@
 #include <wallet/coincontrol.h>
 #include <veil/invalid.h>
 #include <veil/ringct/blind.h>
+#include <veil/ringct/bulletproof_wallet.h>
 #include <veil/ringct/anon.h>
 #include <veil/ringct/watchonly.h>
 #include <veil/zerocoin/denomination_functions.h>
@@ -642,6 +643,7 @@ isminetype AnonWallet::IsMine(const CTxOutBase *txout) const
         case OUTPUT_STANDARD:
             return ISMINE_NO;
         case OUTPUT_CT:
+        case OUTPUT_CT_BULLETPROOF:
         {
             auto* out = (CTxOutCT*)txout;
             CTxDestination dest;
@@ -656,6 +658,7 @@ isminetype AnonWallet::IsMine(const CTxOutBase *txout) const
             break;
         }
         case OUTPUT_RINGCT:
+        case OUTPUT_RINGCT_BULLETPROOF:
         {
             CKeyID keyID = ((CTxOutRingCT*) txout)->pk.GetID();
             if (mapKeyPaths.count(keyID)) {
@@ -1168,6 +1171,7 @@ bool AnonWallet::GetBalances(BalanceList &bal)
             }
             switch (r.nType) {
                 case OUTPUT_RINGCT:
+                case OUTPUT_RINGCT_BULLETPROOF:
                     if (!(r.nFlags & ORF_OWNED) || r.IsSpent())
                         continue;
                     if (fTrusted && !fConfirmed)
@@ -1178,6 +1182,7 @@ bool AnonWallet::GetBalances(BalanceList &bal)
                         bal.nRingCTUnconf += r.GetAmount();
                     break;
                 case OUTPUT_CT:
+                case OUTPUT_CT_BULLETPROOF:
                     if (!(r.nFlags & ORF_OWNED) || r.IsSpent())
                         continue;
                     if(fTrusted && !fConfirmed)
@@ -1551,6 +1556,15 @@ void CreateOutputRingCT(OUTPUT_PTR<CTxOutBase> &txbout, const CCmpPubKey& cmpPub
 
 int CreateOutput(OUTPUT_PTR<CTxOutBase> &txbout, CTempRecipient &r, std::string &sError)
 {
+    // Past the Bulletproof activation height, blinded outputs are emitted as the
+    // compact bulletproof variants (675 B proof + CEcdhInfo payload) instead of
+    // the ~5 KB Borromean proof. Consensus mirrors this exactly: the
+    // ConnectBlock activation-policy loop rejects legacy blinded outputs at or
+    // above the height and rejects bulletproof outputs below it, so the wallet
+    // must switch in lockstep. The tx being built lands in the next block, hence
+    // chainActive.Height() + 1.
+    const bool fBulletproofsActive = (chainActive.Height() + 1) >= Params().HeightEnableBulletproofs();
+
     switch (r.nType) {
         case OUTPUT_DATA:
             txbout = MAKE_OUTPUT<CTxOutData>(r.vData);
@@ -1562,6 +1576,8 @@ int CreateOutput(OUTPUT_PTR<CTxOutBase> &txbout, CTempRecipient &r, std::string 
             {
             txbout = MAKE_OUTPUT<CTxOutCT>();
             CTxOutCT *txout = (CTxOutCT*)txbout.get();
+            if (fBulletproofsActive)
+                txout->nVersion = OUTPUT_CT_BULLETPROOF;
 
             if (r.fNonceSet) {
                 if (r.vData.size() < 33) {
@@ -1579,6 +1595,8 @@ int CreateOutput(OUTPUT_PTR<CTxOutBase> &txbout, CTempRecipient &r, std::string 
         case OUTPUT_RINGCT:
             {
                 CreateOutputRingCT(txbout, r.pkTo, r.nStealthPrefix, r.sEphem.GetPubKey());
+                if (fBulletproofsActive)
+                    txbout->nVersion = OUTPUT_RINGCT_BULLETPROOF;
             }
             break;
         default:
@@ -1619,6 +1637,45 @@ bool AnonWallet::AddCTData(CTxOutBase *txout, CTempRecipient &r, std::string &sE
         nonce = r.sEphem.ECDH(r.pkTo);
         CSHA256().Write(nonce.begin(), 32).Finalize(nonce.begin());
         r.nonce = nonce;
+    }
+
+    // Bulletproof emission path. The commitment above is already blind*G +
+    // value*H (via generator_h), identical in form to the legacy CT commitment,
+    // so the only difference is the proof + payload: a compact 64-bit
+    // bulletproof plus the CEcdhInfo (view tag + ChaCha20-masked amount/blind/
+    // narration) that replaces the rewindable Borromean proof. `nonce` here is
+    // exactly the hashed ECDH shared secret the recipient reconstructs.
+    if (txout->IsType(OUTPUT_CT_BULLETPROOF) || txout->IsType(OUTPUT_RINGCT_BULLETPROOF)) {
+        CEcdhInfo *pEcdh = txout->GetPEcdhInfo();
+        if (!pEcdh) {
+            sError = strprintf("Bulletproof output missing ecdhInfo for type %d.", txout->GetType());
+            return error("%s: %s", __func__, sError);
+        }
+
+        // pkEphem must match the bytes the recipient reads from vData[0..33].
+        std::vector<uint8_t> *pvData = nullptr;
+        if (txout->GetType() == OUTPUT_CT_BULLETPROOF)
+            pvData = &((CTxOutCT*)txout)->vData;
+        else if (txout->GetType() == OUTPUT_RINGCT_BULLETPROOF)
+            pvData = &((CTxOutRingCT*)txout)->vData;
+        if (!pvData || pvData->size() < 33) {
+            sError = "Bulletproof output missing ephemeral pubkey in vData.";
+            return error("%s: %s", __func__, sError);
+        }
+
+        if (r.vBlind.size() < 32) {
+            sError = "Bulletproof output missing blinding factor.";
+            return error("%s: %s", __func__, sError);
+        }
+
+        std::vector<uint8_t> vProof;
+        if (!CreateBulletproofOutput(nonce.begin(), pvData->data(), (CAmount)nValue,
+                                     r.vBlind.data(), r.sNarration, *pCommitment,
+                                     *pEcdh, vProof, sError))
+            return error("%s: %s", __func__, sError);
+
+        *pvRangeproof = vProof;
+        return true;
     }
 
     const char *message = r.sNarration.c_str();
@@ -3030,7 +3087,8 @@ bool AnonWallet::PlaceRealOutputs(std::vector<std::vector<int64_t> > &vMI, size_
                     return error("%s: %s", __func__, sError);
                 }
 
-                if (!stx.tx->vpout[coin.second]->IsType(OUTPUT_RINGCT)) {
+                if (!(stx.tx->vpout[coin.second]->IsType(OUTPUT_RINGCT)
+                      || stx.tx->vpout[coin.second]->IsType(OUTPUT_RINGCT_BULLETPROOF))) {
                     sError = strprintf("Output %d is not a RingCT output: %s", coin.second, txhash.ToString().c_str());
                     return error("%s: %s", __func__, sError);
                 }
@@ -4890,6 +4948,7 @@ bool AnonWallet::ProcessLockedBlindedOutputs()
         pout->n = op.n;
         switch (txout->nVersion) {
             case OUTPUT_CT:
+            case OUTPUT_CT_BULLETPROOF:
                 if (OwnBlindOut(&wdb, op.hash, (CTxOutCT*)txout.get(), *pout, stx, fUpdated)
                     && !fHave) {
                     fUpdated = true;
@@ -4897,6 +4956,7 @@ bool AnonWallet::ProcessLockedBlindedOutputs()
                 }
                 break;
             case OUTPUT_RINGCT:
+            case OUTPUT_RINGCT_BULLETPROOF:
                 if (OwnAnonOut(&wdb, op.hash, (CTxOutRingCT*)txout.get(), *pout, stx, fUpdated)
                     && !fHave) {
                     fUpdated = true;
@@ -5229,7 +5289,7 @@ bool AnonWallet::ScanForOwnedOutputs(const CTransaction &tx, size_t &nCT, size_t
     int32_t nOutputId = -1;
     for (const auto &txout : tx.vpout) {
         nOutputId++;
-        if (txout->IsType(OUTPUT_CT)) {
+        if (txout->IsType(OUTPUT_CT) || txout->IsType(OUTPUT_CT_BULLETPROOF)) {
             nCT++;
             const CTxOutCT *ctout = (CTxOutCT*) txout.get();
 
@@ -5274,7 +5334,7 @@ bool AnonWallet::ScanForOwnedOutputs(const CTransaction &tx, size_t &nCT, size_t
                 }
             }
             continue;
-        } else if (txout->IsType(OUTPUT_RINGCT)) {
+        } else if (txout->IsType(OUTPUT_RINGCT) || txout->IsType(OUTPUT_RINGCT_BULLETPROOF)) {
             nRingCT++;
             const CTxOutRingCT *rctout = (CTxOutRingCT*) txout.get();
 
@@ -5468,9 +5528,9 @@ void AnonWallet::RescanWallet()
             auto pout = txRef->vpout[it->n];
             if (it->scriptPubKey.empty()) {
                 CStoredTransaction stx;
-                if (it->nType == OUTPUT_CT) {
+                if (it->nType == OUTPUT_CT || it->nType == OUTPUT_CT_BULLETPROOF) {
                     OwnBlindOut(&wdb, txid, (CTxOutCT*)pout.get(), *(it), stx, fUpdated);
-                } else if (it->nType == OUTPUT_RINGCT) {
+                } else if (it->nType == OUTPUT_RINGCT || it->nType == OUTPUT_RINGCT_BULLETPROOF) {
                     OwnAnonOut(&wdb, txid, (CTxOutRingCT*)pout.get(), *(it), stx, fUpdated);
                 }
                 if (fUpdated)
@@ -5804,20 +5864,36 @@ bool AnonWallet::OwnBlindOut(AnonWalletDB *pwdb, const uint256 &txhash, const CT
     size_t mlen = sizeof(msg);
     memset(msg, 0, mlen);
     uint64_t amountOut;
-    if (1 != secp256k1_rangeproof_rewind(secp256k1_ctx_blind,
-        blindOut, &amountOut, msg, &mlen, nonce.begin(),
-        &min_value, &max_value,
-        &pout->commitment, pout->vRangeproof.data(), pout->vRangeproof.size(),
-        nullptr, 0,
-        secp256k1_generator_h)) {
-        return error("%s: secp256k1_rangeproof_rewind failed.", __func__);
-    }
+    if (pout->IsBulletproof()) {
+        // Bulletproof proofs are not rewindable; the amount/blind/narration are
+        // carried in the CEcdhInfo payload. ScanBulletproofOutput authenticates
+        // via the Pedersen bind-check (recomputes blind*G+value*H and requires
+        // byte-equality with the commitment), so a successful return is proof
+        // the payload was not tampered.
+        CAmount amt = 0;
+        std::string narr;
+        if (!ScanBulletproofOutput(nonce.begin(), pout->vData.data(), pout->ecdhInfo,
+                                   pout->commitment, amt, blindOut, narr))
+            return error("%s: ScanBulletproofOutput failed (view-tag/bind-check).", __func__);
+        amountOut = (uint64_t)amt;
+        if (!narr.empty())
+            rout.sNarration = narr;
+    } else {
+        if (1 != secp256k1_rangeproof_rewind(secp256k1_ctx_blind,
+            blindOut, &amountOut, msg, &mlen, nonce.begin(),
+            &min_value, &max_value,
+            &pout->commitment, pout->vRangeproof.data(), pout->vRangeproof.size(),
+            nullptr, 0,
+            secp256k1_generator_h)) {
+            return error("%s: secp256k1_rangeproof_rewind failed.", __func__);
+        }
 
-    msg[mlen-1] = '\0';
+        msg[mlen-1] = '\0';
 
-    size_t nNarr = strlen((const char*)msg);
-    if (nNarr > 0) {
-        rout.sNarration.assign((const char*)msg, nNarr);
+        size_t nNarr = strlen((const char*)msg);
+        if (nNarr > 0) {
+            rout.sNarration.assign((const char*)msg, nNarr);
+        }
     }
 
     rout.SetValue(amountOut);
@@ -5930,19 +6006,32 @@ int AnonWallet::OwnAnonOut(AnonWalletDB *pwdb, const uint256 &txhash, const CTxO
     size_t mlen = sizeof(msg);
     memset(msg, 0, mlen);
     uint64_t amountOut;
-    if (1 != secp256k1_rangeproof_rewind(secp256k1_ctx_blind,
-        blindOut, &amountOut, msg, &mlen, nonce.begin(),
-        &min_value, &max_value,
-        &pout->commitment, pout->vRangeproof.data(), pout->vRangeproof.size(),
-        nullptr, 0,
-        secp256k1_generator_h)) {
-        return werrorN(0, "%s: secp256k1_rangeproof_rewind failed.", __func__);
-    }
+    if (pout->IsBulletproof()) {
+        // See OwnBlindOut: BP proofs are not rewindable; recover and
+        // authenticate the amount/blind/narration from the CEcdhInfo payload.
+        CAmount amt = 0;
+        std::string narr;
+        if (!ScanBulletproofOutput(nonce.begin(), pout->vData.data(), pout->ecdhInfo,
+                                   pout->commitment, amt, blindOut, narr))
+            return werrorN(0, "%s: ScanBulletproofOutput failed (view-tag/bind-check).", __func__);
+        amountOut = (uint64_t)amt;
+        if (!narr.empty())
+            rout.sNarration = narr;
+    } else {
+        if (1 != secp256k1_rangeproof_rewind(secp256k1_ctx_blind,
+            blindOut, &amountOut, msg, &mlen, nonce.begin(),
+            &min_value, &max_value,
+            &pout->commitment, pout->vRangeproof.data(), pout->vRangeproof.size(),
+            nullptr, 0,
+            secp256k1_generator_h)) {
+            return werrorN(0, "%s: secp256k1_rangeproof_rewind failed.", __func__);
+        }
 
-    msg[mlen-1] = '\0';
-    size_t nNarr = strlen((const char*)msg);
-    if (nNarr > 0) {
-        rout.sNarration.assign((const char*)msg, nNarr);
+        msg[mlen-1] = '\0';
+        size_t nNarr = strlen((const char*)msg);
+        if (nNarr > 0) {
+            rout.sNarration.assign((const char*)msg, nNarr);
+        }
     }
 
     rout.nFlags |= ORF_OWNED;
@@ -6014,7 +6103,8 @@ bool AnonWallet::ProcessPlaceholder(AnonWalletDB *pwdb, const CTransaction &tx, 
         int nType = OUTPUT_STANDARD;
         for (size_t i = 0; i < tx.vpout.size(); ++i) {
             const auto &txout = tx.vpout[i];
-            if (!(txout->IsType(OUTPUT_CT) || txout->IsType(OUTPUT_RINGCT))) {
+            if (!(txout->IsType(OUTPUT_CT) || txout->IsType(OUTPUT_RINGCT)
+                  || txout->IsType(OUTPUT_CT_BULLETPROOF) || txout->IsType(OUTPUT_RINGCT_BULLETPROOF))) {
                 continue;
             }
             if (pROutChange && pROutChange->n == i) {
@@ -6131,7 +6221,9 @@ bool AnonWallet::AddToRecord(CTransactionRecord &rtxIn, const CTransaction &tx,
                     uint256 hashBlock;
                     CTransactionRef txPrev;
                     if (GetTransaction(prevout0.hash, txPrev, Params().GetConsensus(), hashBlock, true)) {
-                        if (txPrev->vpout.size() > prevout0.n && txPrev->vpout[prevout0.n]->IsType(OUTPUT_CT)) {
+                        if (txPrev->vpout.size() > prevout0.n
+                            && (txPrev->vpout[prevout0.n]->IsType(OUTPUT_CT)
+                                || txPrev->vpout[prevout0.n]->IsType(OUTPUT_CT_BULLETPROOF))) {
                             rtx.nFlags |= ORF_BLIND_IN;
                         }
                     }
@@ -6198,6 +6290,7 @@ bool AnonWallet::AddToRecord(CTransactionRecord &rtxIn, const CTransaction &tx,
                 }
                 break;
             case OUTPUT_CT:
+            case OUTPUT_CT_BULLETPROOF:
                 if (OwnBlindOut(&wdb, txhash, (CTxOutCT*)txout.get(), *pout, stx, fUpdated)
                     && !fHave) {
                     fUpdated = true;
@@ -6212,6 +6305,7 @@ bool AnonWallet::AddToRecord(CTransactionRecord &rtxIn, const CTransaction &tx,
                 rtx.InsertOutput(*pout);
                 break;
             case OUTPUT_RINGCT:
+            case OUTPUT_RINGCT_BULLETPROOF:
                 if (OwnAnonOut(&wdb, txhash, (CTxOutRingCT*)txout.get(), *pout, stx, fUpdated)
                     && !fHave) {
                     fUpdated = true;
@@ -6543,7 +6637,7 @@ void AnonWallet::AvailableAnonCoins(std::vector<COutputR> &vCoins, bool fOnlySaf
         }
 
         for (const auto &r : rtx.vout) {
-            if (r.nType != OUTPUT_RINGCT) {
+            if (r.nType != OUTPUT_RINGCT && r.nType != OUTPUT_RINGCT_BULLETPROOF) {
                 continue;
             }
 

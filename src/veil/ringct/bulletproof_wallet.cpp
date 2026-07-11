@@ -110,7 +110,13 @@ bool CreateBulletproofOutput(
 
     const uint64_t value[1] = { static_cast<uint64_t>(amount) };
     const uint8_t* blindPtr[1] = { blind };
-    const secp256k1_pedersen_commitment* commitPtr[1] = { &commitment };
+    // Single-shot proving: pass commits == NULL so the module derives the
+    // commitment internally from value*value_gen + blind*blind_gen. Because
+    // blind_gen == G and value_gen == H, that derivation equals `commitment`
+    // (blind*G + value*H), so the proof verifies against it. Passing a non-NULL
+    // commits array is only legal in the multi-party path (tau_x/t_one/t_two/
+    // private_nonce set) and otherwise trips a libsecp256k1 ARG_CHECK abort.
+    (void)commitment;
 
     vRangeproofOut.assign(1024, 0); // BULLETPROOF_MAX_LEN
     size_t plen = vRangeproofOut.size();
@@ -119,7 +125,7 @@ bool CreateBulletproofOutput(
         secp256k1_ctx_blind, blind_scratch, blind_bp_gens,
         vRangeproofOut.data(), &plen,
         nullptr /*tau_x*/, nullptr /*t_one*/, nullptr /*t_two*/,
-        value, nullptr /*min_value*/, blindPtr, commitPtr, 1 /*n_commits*/,
+        value, nullptr /*min_value*/, blindPtr, nullptr /*commits*/, 1 /*n_commits*/,
         secp256k1_generator_h, 64 /*nbits*/,
         ss /*nonce*/, nullptr /*private_nonce*/, nullptr /*extra_commit*/, 0, nullptr /*message*/);
 
