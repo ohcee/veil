@@ -637,15 +637,27 @@ bool PublicRingCTStake::GetMinimumInputValue(CAmount& nValue) const
     CAmount nMinValue = 0;
     CAmount nMaxValue = 0;
     CTxOutRingCT* txout = nullptr;
+    bool fBulletproof = false;
     for (auto& pout : m_ptx->vpout) {
-        if (pout->GetType() != OUTPUT_RINGCT)
+        if (pout->GetType() != OUTPUT_RINGCT && pout->GetType() != OUTPUT_RINGCT_BULLETPROOF)
             continue;
         txout = (CTxOutRingCT*)pout.get();
+        fBulletproof = pout->GetType() == OUTPUT_RINGCT_BULLETPROOF;
         break;
     }
 
     if (!txout)
         return error("%s: PublicRingCTStake has no RingCT outputs.", __func__);
+
+    // DESIGN GAP: public stake-value verification derives the bracket floor from
+    // the Borromean rangeproof's parseable min_value. A Bulletproof only proves
+    // [0, 2^64) and exposes no public min_value, so a third party cannot learn
+    // the staked coin's value bracket. Until a BP stake-value commitment scheme
+    // is designed (e.g. proving against an explicit public min_value bracket),
+    // Bulletproof RingCT coins are not publicly stakeable and are rejected here
+    // rather than silently accepted with an unverifiable value.
+    if (fBulletproof)
+        return error("%s: Bulletproof RingCT stake value verification is not yet implemented.", __func__);
 
     if (!GetRangeProofInfo(txout->vRangeproof, nExp, nMantissa, nMinValue, nMaxValue))
         return error("%s: Failed to get range proof info.", __func__);

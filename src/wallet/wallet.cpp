@@ -1544,7 +1544,9 @@ isminetype CWallet::IsMine(const CTxOutBase *txout) const
             return IsMine(out);
         }
         case OUTPUT_CT:
+        case OUTPUT_CT_BULLETPROOF:
         case OUTPUT_RINGCT:
+        case OUTPUT_RINGCT_BULLETPROOF:
         case OUTPUT_DATA:
         {
             return pAnonWalletMain->IsMine(txout);
@@ -1565,7 +1567,9 @@ CAmount CWallet::GetCredit(const CTxOutBase *txout, const isminefilter &filter) 
             return GetCredit(out, filter);
         }
         case OUTPUT_CT:
+        case OUTPUT_CT_BULLETPROOF:
         case OUTPUT_RINGCT:
+        case OUTPUT_RINGCT_BULLETPROOF:
         case OUTPUT_DATA:
         {
             //todo: this does not work
@@ -1602,7 +1606,9 @@ bool CWallet::IsChange(const CTxOutBase *txout) const
             return IsChange(out);
         }
         case OUTPUT_CT:
+        case OUTPUT_CT_BULLETPROOF:
         case OUTPUT_RINGCT:
+        case OUTPUT_RINGCT_BULLETPROOF:
         case OUTPUT_DATA:
         {
             return pAnonWalletMain->IsChange(txout);
@@ -2970,10 +2976,12 @@ void CWallet::AvailableCoins(std::vector<COutput> &vCoins, bool fOnlySafe, const
                         continue;      // caller isn't requesting basecoin
                 break;
               case OUTPUT_RINGCT:
+              case OUTPUT_RINGCT_BULLETPROOF:
                     if (!(filterType & FILTER_RINGCT))
                         continue;      // caller isn't requesting RingCT outputs
                 break;
               case OUTPUT_CT:
+              case OUTPUT_CT_BULLETPROOF:
                     if (!(filterType & FILTER_CT))
                         continue;      // caller isn't requesting stealth outputs
                 break;
@@ -4045,7 +4053,7 @@ bool CWallet::GetKeyImageForCoin(const COutputR& coin, AnonWalletDB& wdb, CCmpPu
         return false;
     }
 
-    if (!stx.tx->vpout[coin.i]->IsType(OUTPUT_RINGCT)) {
+    if (!(stx.tx->vpout[coin.i]->IsType(OUTPUT_RINGCT) || stx.tx->vpout[coin.i]->IsType(OUTPUT_RINGCT_BULLETPROOF))) {
         LogPrint(BCLog::STAKING, "Output %d somehow not a RingCT output, tx=%s\n", coin.i, coin.txhash.GetHex());
         return false;
     }

@@ -3702,9 +3702,9 @@ static UniValue gettransaction(const JSONRPCRequest& request)
                 }
             }
             obj_out.pushKV("amount", FormatMoney(pout->GetValue()));
-        } else if (pout->GetType() == OUTPUT_CT) {
+        } else if (pout->GetType() == OUTPUT_CT || pout->GetType() == OUTPUT_CT_BULLETPROOF) {
             obj_out.pushKV("type", "ct");
-        } else if (pout->GetType() == OUTPUT_RINGCT) {
+        } else if (pout->GetType() == OUTPUT_RINGCT || pout->GetType() == OUTPUT_RINGCT_BULLETPROOF) {
             obj_out.pushKV("type", "ringct");
             CTxOutRingCT* outRingCT = (CTxOutRingCT*)pout.get();
 
@@ -4852,8 +4852,14 @@ static UniValue listunspent(const JSONRPCRequest& request)
           case OUTPUT_RINGCT:
             entry.pushKV("type", "ringct");
             break;
+          case OUTPUT_RINGCT_BULLETPROOF:
+            entry.pushKV("type", "ringct_bulletproof");
+            break;
           case OUTPUT_CT:
             entry.pushKV("type", "ct");
+            break;
+          case OUTPUT_CT_BULLETPROOF:
+            entry.pushKV("type", "ct_bulletproof");
             break;
           default:
             entry.pushKV("type", "unknown");

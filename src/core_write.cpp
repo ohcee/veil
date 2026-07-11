@@ -139,6 +139,20 @@ std::string EncodeHexTx(const CTransaction& tx, const int serializeFlags)
     return HexStr(ssTx);
 }
 
+void AddEcdhInfo(const CEcdhInfo &ecdhInfo, UniValue &entry)
+{
+    // The bulletproof data-carrying payload: view tag, ChaCha20-masked amount
+    // and blind, and (optionally) masked narration. Amount/blind are encrypted,
+    // so this is diagnostic only -- only the recipient can decrypt them.
+    UniValue o(UniValue::VOBJ);
+    o.pushKV("view_tag", HexStr(ecdhInfo.vchViewTag, ecdhInfo.vchViewTag + 1));
+    o.pushKV("amount_enc", HexStr(ecdhInfo.vchAmount, ecdhInfo.vchAmount + 8));
+    o.pushKV("blind_enc", HexStr(ecdhInfo.vchBlind, ecdhInfo.vchBlind + 32));
+    if (!ecdhInfo.vNarration.empty())
+        o.pushKV("narration_enc", HexStr(ecdhInfo.vNarration.begin(), ecdhInfo.vNarration.end()));
+    entry.pushKV("ecdhInfo", o);
+}
+
 void AddRangeproof(const std::vector<uint8_t> &vRangeproof, UniValue &entry)
 {
     entry.pushKV("rangeproof", HexStr(vRangeproof.begin(), vRangeproof.end()));
@@ -190,24 +204,30 @@ void OutputToJSON(const uint256 &txid, const int& i,
         }
             break;
         case OUTPUT_CT:
+        case OUTPUT_CT_BULLETPROOF:
         {
             CTxOutCT *s = (CTxOutCT*) baseOut;
-            entry.pushKV("type", "blind");
+            entry.pushKV("type", s->IsBulletproof() ? "blind_bulletproof" : "blind");
             entry.pushKV("valueCommitment", HexStr(&s->commitment.data[0], &s->commitment.data[0]+33));
             entry.pushKV("vout.n", i);
             UniValue o(UniValue::VOBJ);
             ScriptPubKeyToUniv(s->scriptPubKey, o, true);
             entry.pushKV("scriptPubKey", o);
             entry.pushKV("data_hex", HexStr(s->vData.begin(), s->vData.end()));
-
-            AddRangeproof(s->vRangeproof, entry);
+            if (s->IsBulletproof()) {
+                entry.pushKV("rangeproof_size", (int)s->vRangeproof.size());
+                AddEcdhInfo(s->ecdhInfo, entry);
+            } else {
+                AddRangeproof(s->vRangeproof, entry);
+            }
         }
             break;
         case OUTPUT_RINGCT:
+        case OUTPUT_RINGCT_BULLETPROOF:
         {
             CTxOutRingCT *s = (CTxOutRingCT*) baseOut;
 
-            entry.pushKV("type", "ringct");
+            entry.pushKV("type", s->IsBulletproof() ? "ringct_bulletproof" : "ringct");
             entry.pushKV("vout.n", i);
             entry.pushKV("pubkey", HexStr(s->pk.begin(), s->pk.end()));
             entry.pushKV("pubkey_hash", CBitcoinAddress(s->pk.GetID()).ToString());
@@ -219,8 +239,12 @@ void OutputToJSON(const uint256 &txid, const int& i,
             entry.pushKV("valueCommitment", HexStr(&s->commitment.data[0], &s->commitment.data[0]+33));
             entry.pushKV("data_hex", HexStr(s->vData.begin(), s->vData.end()));
 
-
-            AddRangeproof(s->vRangeproof, entry);
+            if (s->IsBulletproof()) {
+                entry.pushKV("rangeproof_size", (int)s->vRangeproof.size());
+                AddEcdhInfo(s->ecdhInfo, entry);
+            } else {
+                AddRangeproof(s->vRangeproof, entry);
+            }
         }
             break;
         default:

@@ -5085,7 +5085,7 @@ bool CChainState::ContextualCheckRingCTStake(CBlockIndex* pindex, PublicRingCTSt
 
         //Check that it is a ringct output
         const CTxOutBaseRef txbout = ptxPrev->vpout[input.n];
-        if (txbout->GetType() != OUTPUT_RINGCT)
+        if (txbout->GetType() != OUTPUT_RINGCT && txbout->GetType() != OUTPUT_RINGCT_BULLETPROOF)
             return error ("%s: RingCT Input %s is not a ringct output type", __func__, input.ToString());
     }
     // Stake hash check elsewhere confirms that the stake value is above the minimum

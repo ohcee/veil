@@ -388,7 +388,7 @@ UniValue spendzerocoin(const JSONRPCRequest& request)
                 nValueOutput = pout->GetValue();
                 out.pushKV("value", ValueFromAmount(nValueOutput));
             } else {
-                if (pout->nVersion == OUTPUT_RINGCT) {
+                if (pout->nVersion == OUTPUT_RINGCT || pout->nVersion == OUTPUT_RINGCT_BULLETPROOF) {
                     COutputRecord *record = rtx.GetOutput(i);
                     auto ismine = pwallet->IsMine(pout.get());
                     out.pushKV("type", "ringct");

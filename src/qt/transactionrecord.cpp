@@ -59,9 +59,11 @@ QList<TransactionRecord> TransactionRecord::decomposeTransaction(const interface
 
             if (r.nType == OUTPUT_STANDARD) {
                 outputType = OutputTypes::OUTPUT_STANDARD;
-            } else if (r.nType == OUTPUT_CT) {
+            } else if (r.nType == OUTPUT_CT || r.nType == OUTPUT_CT_BULLETPROOF) {
+                // Normalize bulletproof variants to their logical type so all the
+                // downstream conversion-category switches treat them identically.
                 outputType = OutputTypes::OUTPUT_CT;
-            } else if (r.nType == OUTPUT_RINGCT) {
+            } else if (r.nType == OUTPUT_RINGCT || r.nType == OUTPUT_RINGCT_BULLETPROOF) {
                 outputType = OutputTypes::OUTPUT_RINGCT;
             };
 

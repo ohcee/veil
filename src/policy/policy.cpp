@@ -173,7 +173,7 @@ bool IsStandardTx(const CTransaction& tx, std::string& reason)
     for (const auto &txout : tx.vpout) {
         const CTxOutBase *p = txout.get();
 
-        if (!p->IsType(OUTPUT_STANDARD) && !p->IsType(OUTPUT_CT))
+        if (!p->IsType(OUTPUT_STANDARD) && !p->IsType(OUTPUT_CT) && !p->IsType(OUTPUT_CT_BULLETPROOF))
             continue;
 
         if (!::IsStandard(*p->GetPScriptPubKey(), whichType)) {

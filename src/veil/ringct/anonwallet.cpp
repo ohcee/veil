@@ -5537,9 +5537,19 @@ void AnonWallet::RescanWallet()
                     LogPrintf("%s: Updating scriptpubkey for %s\n", __func__, COutPoint(txid, it->n).ToString());
             }
 
-            // Check that the record's type is correct
-            if (it->nType != pout->GetType()) {
-                it->nType = pout->GetType();
+            // Check that the record's type is correct. Output records store the
+            // *legacy* blinded type (OUTPUT_CT/OUTPUT_RINGCT) even for bulletproof
+            // outputs -- OwnBlindOut/OwnAnonOut normalize on scan -- so downstream
+            // record consumers only ever see two blinded types. Normalize the
+            // on-chain bulletproof type back to legacy before comparing, or this
+            // would thrash the record type on every rescan.
+            uint8_t nNormalizedType = pout->GetType();
+            if (nNormalizedType == OUTPUT_CT_BULLETPROOF)
+                nNormalizedType = OUTPUT_CT;
+            else if (nNormalizedType == OUTPUT_RINGCT_BULLETPROOF)
+                nNormalizedType = OUTPUT_RINGCT;
+            if (it->nType != nNormalizedType) {
+                it->nType = nNormalizedType;
                 fUpdated = true;
                 LogPrintf("%s: Updated txout type for %s\n", __func__, COutPoint(txid, it->n).ToString());
 
@@ -5957,6 +5967,44 @@ bool AnonWallet::GetCTBlindsFromOutput(const CTxOutBase *pout, uint256& blind) c
     } else if (pout->GetType() == OUTPUT_RINGCT) {
         auto txout = (CTxOutRingCT*)pout;
         return GetCTBlinds(txout->pk.GetID(), txout->vData, &txout->commitment, txout->vRangeproof, blind, nValue);
+    } else if (pout->GetType() == OUTPUT_CT_BULLETPROOF || pout->GetType() == OUTPUT_RINGCT_BULLETPROOF) {
+        // Bulletproof outputs are not rewindable; recover the blind from the
+        // CEcdhInfo payload via the same bind-checked scan used on receipt.
+        // Primary spends use the blind stored at scan time; this fallback path
+        // covers cases where the stored blind is missing (e.g. after a rescan).
+        const bool fCT = pout->GetType() == OUTPUT_CT_BULLETPROOF;
+        auto ctout = (CTxOutCT*)pout;   // CT and RingCT share commitment/vData/ecdhInfo layout
+        auto rctout = (CTxOutRingCT*)pout;
+        const std::vector<uint8_t>& vData = fCT ? ctout->vData : rctout->vData;
+        const secp256k1_pedersen_commitment& commitment = fCT ? ctout->commitment : rctout->commitment;
+        const CEcdhInfo& ecdhInfo = fCT ? ctout->ecdhInfo : rctout->ecdhInfo;
+
+        CKeyID id;
+        if (fCT) {
+            if (!KeyIdFromScriptPubKey(ctout->scriptPubKey, id))
+                return false;
+        } else {
+            id = rctout->pk.GetID();
+        }
+        CKey key;
+        if (!GetKey(id, key))
+            return false;
+        if (vData.size() < 33)
+            return false;
+
+        CPubKey pkEphem;
+        pkEphem.Set(vData.begin(), vData.begin() + 33);
+        uint256 nonce = key.ECDH(pkEphem);
+        CSHA256().Write(nonce.begin(), 32).Finalize(nonce.begin());
+
+        uint8_t blindOut[32];
+        CAmount amountOut = 0;
+        std::string narr;
+        if (!ScanBulletproofOutput(nonce.begin(), vData.data(), ecdhInfo, commitment, amountOut, blindOut, narr))
+            return false;
+        blind = uint256();
+        memcpy(blind.begin(), blindOut, 32);
+        return true;
     }
 
     return false;

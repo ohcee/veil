@@ -178,7 +178,7 @@ void ScanWatchOnlyAddresses()
                     for (const auto &tx : block.vtx) {
                         int index = 0;
                         for (const auto &txout : tx->vpout) {
-                            if (txout->IsType(OUTPUT_RINGCT)) {
+                            if (txout->IsType(OUTPUT_RINGCT) || txout->IsType(OUTPUT_RINGCT_BULLETPROOF)) {
                                 const CTxOutRingCT *rctout = (CTxOutRingCT *) txout.get();
                                 CTxOutWatchonly out;
                                 out.type = CTxOutWatchonly::ANON;
@@ -186,7 +186,7 @@ void ScanWatchOnlyAddresses()
                                 out.nIndex = index;
                                 out.ringctOut = *rctout;
                                 vecNewRingCTTransactions[i].push_back(out);
-                            } else if (txout->IsType(OUTPUT_CT)) {
+                            } else if (txout->IsType(OUTPUT_CT) || txout->IsType(OUTPUT_CT_BULLETPROOF)) {
                                 const CTxOutCT *ctout = (CTxOutCT *) txout.get();
                                 CTxOutWatchonly out;
                                 out.type = CTxOutWatchonly::STEALTH;

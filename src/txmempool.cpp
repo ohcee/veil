@@ -786,7 +786,9 @@ void CTxMemPool::check(const CCoinsViewCache *pcoins) const
                 const CTransaction& tx2 = it2->GetTx();
 
                 assert(tx2.vpout.size() > txin.prevout.n && tx2.vpout[txin.prevout.n] != nullptr
-                       && (tx2.vpout[txin.prevout.n]->IsStandardOutput() || tx2.vpout[txin.prevout.n]->IsType(OUTPUT_CT)));
+                       && (tx2.vpout[txin.prevout.n]->IsStandardOutput()
+                           || tx2.vpout[txin.prevout.n]->IsType(OUTPUT_CT)
+                           || tx2.vpout[txin.prevout.n]->IsType(OUTPUT_CT_BULLETPROOF)));
 
                 fDependsWait = true;
                 if (setParentCheck.insert(it2).second) {
@@ -1078,8 +1080,8 @@ bool CCoinsViewMemPool::GetCoin(const COutPoint &outpoint, Coin &coin) const {
                 txout.nValue = out->GetValue();
 
             coin = Coin(txout, MEMPOOL_HEIGHT, false);
-            if (out->IsType(OUTPUT_CT)) {
-                coin.nType = OUTPUT_CT;
+            if (out->IsType(OUTPUT_CT) || out->IsType(OUTPUT_CT_BULLETPROOF)) {
+                coin.nType = OUTPUT_CT; // normalized like AddCoins; only the commitment matters to the UTXO layer
                 coin.commitment = ((CTxOutCT*)out)->commitment;
             }
 

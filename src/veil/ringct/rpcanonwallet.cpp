@@ -678,8 +678,10 @@ static const char *TypeToWord(OutputTypes type)
         case OUTPUT_STANDARD:
             return "basecoin";
         case OUTPUT_CT:
+        case OUTPUT_CT_BULLETPROOF:
             return "stealth";
         case OUTPUT_RINGCT:
+        case OUTPUT_RINGCT_BULLETPROOF:
             return "ringct";
         default:
             break;
@@ -1608,7 +1610,8 @@ static UniValue fundrawtransactionfrom(const JSONRPCRequest& request)
         const auto &txout = tx.vpout[i];
         CTempRecipient &r = vecSend[i];
 
-        if (txout->IsType(OUTPUT_CT) || txout->IsType(OUTPUT_RINGCT)) {
+        if (txout->IsType(OUTPUT_CT) || txout->IsType(OUTPUT_RINGCT)
+            || txout->IsType(OUTPUT_CT_BULLETPROOF) || txout->IsType(OUTPUT_RINGCT_BULLETPROOF)) {
             // Check commitment matches
             std::map<int, CAmount>::iterator ita = mOutputAmounts.find(i);
             std::map<int, uint256>::iterator itb = mOutputBlinds.find(i);
@@ -1647,9 +1650,9 @@ static UniValue fundrawtransactionfrom(const JSONRPCRequest& request)
             r.SetAmount(mOutputAmounts[i]);
             r.fSubtractFeeFromAmount = setSubtractFeeFromOutputs.count(i);
 
-            if (txout->IsType(OUTPUT_CT)) {
+            if (txout->IsType(OUTPUT_CT) || txout->IsType(OUTPUT_CT_BULLETPROOF)) {
                 r.vData = ((CTxOutCT*)txout.get())->vData;
-            } else if (txout->IsType(OUTPUT_RINGCT)) {
+            } else if (txout->IsType(OUTPUT_RINGCT) || txout->IsType(OUTPUT_RINGCT_BULLETPROOF)) {
                 r.vData = ((CTxOutRingCT*)txout.get())->vData;
             }
 
