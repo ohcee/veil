@@ -105,6 +105,11 @@ public:
     const ChainTxData& TxData() const { return chainTxData; }
     void UpdateVersionBitsParameters(Consensus::DeploymentPos d, int64_t nStartTime, int64_t nTimeout);
 
+    // Regtest-only: override the Bulletproof activation height so the functional
+    // test harness can exercise the legacy-Borromean era (BP dormant) and the
+    // BP era on separate chains. Never callable outside regtest (guarded in init).
+    void UpdateBulletproofActivationHeight(int nHeight) { nHeightEnableBulletproofs = nHeight; }
+
     bool IsBech32Prefix(const std::vector<unsigned char> &vchPrefixIn) const;
     bool IsBech32Prefix(const std::vector<unsigned char> &vchPrefixIn, CChainParams::Base58Type &rtype) const;
     bool IsBech32Prefix(const char *ps, size_t slen, CChainParams::Base58Type &rtype) const;
@@ -275,5 +280,10 @@ void SelectParams(const std::string& chain);
  * Allows modifying the Version Bits regtest parameters.
  */
 void UpdateVersionBitsParameters(Consensus::DeploymentPos d, int64_t nStartTime, int64_t nTimeout);
+
+/**
+ * Regtest-only: override the Bulletproof activation height (functional tests).
+ */
+void UpdateBulletproofActivationHeight(int nHeight);
 
 #endif // BITCOIN_CHAINPARAMS_H
