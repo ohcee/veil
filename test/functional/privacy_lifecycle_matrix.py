@@ -54,6 +54,7 @@ REG_POS_START = 100
 REG_LIGHT_ZEROCOIN = 110
 REG_RINGCT_STAKING = 300
 BP_DORMANT_HEIGHT = 100000        # pushed well past REG_RINGCT_STAKING for scenario A
+BP_MIDCHAIN_HEIGHT = 150          # BP activates mid-chain for the boundary/reorg scenario
 STAKE_TIMEOUT_SECS = 180          # generous bound for the PoS kernel search on regtest
 
 
@@ -230,11 +231,73 @@ class PrivacyLifecycleMatrix(BitcoinTestFramework):
         assert_equal(node.getblockcount(), start_height)  # BP coins cannot stake
         self.log.info("BP RingCT staking correctly fail-closed at height=%d", start_height)
 
+    def _scenario_activation_boundary_reorg(self):
+        """BP activation-height gating from the production side, plus a reorg
+        across the Borromean<->Bulletproof boundary.
+
+        Covers the intent of the consensus type-gating rules (#19/#20) by
+        confirming the wallet emits — and the node accepts — the correct output
+        type on each side of HeightEnableBulletproofs, and then exercises the
+        BP-aware DisconnectBlock/ConnectBlock paths (from the type-gate sweep)
+        by invalidating and reconsidering the block AT the activation height.
+        A Disconnect/Connect asymmetry across the type transition is a
+        chain-split-class bug, so this is the highest-value functional check
+        that does not require hand-crafting an invalid block.
+
+        NOTE: this does NOT cover deliberate over-mint / wrong-type *rejection*
+        (a node rejecting a hand-built bad block). The honest wallet never
+        produces those, so triggering the rejection needs a mininode that
+        speaks Veil's RingCT block serialization or an instrumented build —
+        tracked separately, not faked here.
+        """
+        self.log.info("=== Scenario C: BP activation boundary + reorg ===")
+        self._reset_chain(BP_MIDCHAIN_HEIGHT)
+        node = self.nodes[0]
+
+        self._era_basecoin(node)  # height ~120, below BP_MIDCHAIN_HEIGHT (Borromean era)
+        assert node.getblockcount() < BP_MIDCHAIN_HEIGHT
+
+        # Below activation: wallet emits a legacy Borromean CT output, accepted.
+        pre_bp = node.sendtypeto("basecoin", "stealth",
+                                 [{"address": node.getnewaddress(), "amount": 5}])
+        self._mine(node, 2)
+        assert_equal(self._ringct_outputs(node, pre_bp)[0]["type"], "blind")
+
+        # Cross the activation height.
+        self._mine(node, BP_MIDCHAIN_HEIGHT + 3 - node.getblockcount())
+        assert_greater_than(node.getblockcount(), BP_MIDCHAIN_HEIGHT)
+
+        # At/above activation: wallet emits a Bulletproof CT output, accepted.
+        post_bp = node.sendtypeto("basecoin", "stealth",
+                                  [{"address": node.getnewaddress(), "amount": 5}])
+        self._mine(node, 2)
+        assert_equal(self._ringct_outputs(node, post_bp)[0]["type"], "blind_bulletproof")
+
+        tip = node.getbestblockhash()
+        tip_height = node.getblockcount()
+        boundary_hash = node.getblockhash(BP_MIDCHAIN_HEIGHT)
+
+        # Reorg the whole BP era back out: disconnect from the activation height up.
+        node.invalidateblock(boundary_hash)
+        assert_equal(node.getblockcount(), BP_MIDCHAIN_HEIGHT - 1)
+        assert node.getbestblockhash() != tip
+
+        # Reconnect across the boundary: must re-validate to the exact same tip,
+        # proving Disconnect/Connect are symmetric across the type transition.
+        node.reconsiderblock(boundary_hash)
+        assert_equal(node.getbestblockhash(), tip)
+        assert_equal(node.getblockcount(), tip_height)
+        # Both outputs still resolve after the round-trip (no index thrash).
+        assert_equal(self._ringct_outputs(node, pre_bp)[0]["type"], "blind")
+        assert_equal(self._ringct_outputs(node, post_bp)[0]["type"], "blind_bulletproof")
+        self.log.info("activation-boundary reorg clean; tip restored to height=%d", tip_height)
+
     # -------------------------------------------------------------------- main
 
     def run_test(self):
         self._scenario_borromean_staking()
         self._scenario_bulletproof_era()
+        self._scenario_activation_boundary_reorg()
         self.log.info("privacy lifecycle matrix: all scenarios passed")
 
 
