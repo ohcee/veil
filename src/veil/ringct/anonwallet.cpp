@@ -4180,6 +4180,21 @@ bool AnonWallet::AddAnonInputs(CWalletTx &wtx, CTransactionRecord &rtx, std::vec
 bool AnonWallet::AddCoinbaseRewards(
     CMutableTransaction& txCoinbase, CAmount nStakeReward, std::string& sError)
 {
+    // TEST-ONLY (regtest): -debugoverridereward inflates the blinded stake-coinbase
+    // reward so a functional test can confirm consensus VerifyCoinbase rejects an
+    // over-value RingCT coinbase. Strictly gated to regtest and default 0, so it is
+    // a no-op on main/test/dev. It cannot become a mint even if misused: the block
+    // it produces is rejected network-wide by VerifyCoinbase -- the exact check this
+    // exercises -- so the local node simply fails to stake.
+    if (Params().NetworkIDString() == "regtest") {
+        CAmount nRewardOverride = gArgs.GetArg("-debugoverridereward", 0);
+        if (nRewardOverride != 0) {
+            LogPrintf("%s: TEST -debugoverridereward inflating stake reward by %d sats\n",
+                      __func__, nRewardOverride);
+            nStakeReward += nRewardOverride;
+        }
+    }
+
     // Add reward outputs
     std::vector<CTempRecipient> rewards(2);
 

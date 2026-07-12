@@ -292,12 +292,60 @@ class PrivacyLifecycleMatrix(BitcoinTestFramework):
         assert_equal(self._ringct_outputs(node, post_bp)[0]["type"], "blind_bulletproof")
         self.log.info("activation-boundary reorg clean; tip restored to height=%d", tip_height)
 
+    def _scenario_overmint_rejection(self):
+        """Anti-mint: consensus must reject a RingCT stake coinbase whose blinded
+        reward outputs commit to more than the expected reward (#12/#13).
+
+        The honest wallet never builds an over-value coinbase, so this uses the
+        regtest-only `-debugoverridereward` hook to inflate the reward the stake
+        coinbase commits to. VerifyCoinbase's Pedersen tally (run at
+        CreateNewBlock -> TestBlockValidity time) must then reject every block the
+        node tries to stake, with reason `verify-commit-tally-failed`, and no
+        over-value block may enter the chain.
+        """
+        import os
+        self.log.info("=== Scenario D: over-mint coinbase rejection ===")
+        self._reset_chain(BP_DORMANT_HEIGHT)   # Borromean era so the RingCT coin can stake
+        node = self.nodes[0]
+
+        self._era_basecoin(node)
+        self._era_zerocoin_to_ct(node)
+        self._era_ct_to_ringct(node)
+        self._mine(node, REG_RINGCT_STAKING + 12 - node.getblockcount())
+
+        # Restart with the reward override active. The datadir (chain + the mature
+        # stakeable RingCT coin) persists across the restart.
+        node.generatecontinuous(False)  # ensure staking thread is idle before restart
+        self.restart_node(0, extra_args=[
+            "-stakeringct=1", "-stakezerocoin=1",
+            "-nheightenablebulletproofs={}".format(BP_DORMANT_HEIGHT),
+            "-debugoverridereward=100000000"])   # +1 VEIL over the real reward
+        node = self.nodes[0]
+        start_height = node.getblockcount()
+        log_path = os.path.join(node.datadir, "regtest", "debug.log")
+
+        def tally_rejected():
+            with open(log_path, "r", encoding="utf-8") as fh:
+                return "verify-commit-tally-failed" in fh.read()
+
+        node.generatecontinuous(True, 1)
+        try:
+            wait_until(tally_rejected, timeout=STAKE_TIMEOUT_SECS)
+        finally:
+            node.generatecontinuous(False)
+
+        # The over-value block was rejected at build time and never entered the
+        # chain; the node stayed responsive (no abort).
+        assert_equal(node.getblockcount(), start_height)
+        self.log.info("over-value RingCT coinbase rejected by VerifyCoinbase (no mint)")
+
     # -------------------------------------------------------------------- main
 
     def run_test(self):
         self._scenario_borromean_staking()
         self._scenario_bulletproof_era()
         self._scenario_activation_boundary_reorg()
+        self._scenario_overmint_rejection()
         self.log.info("privacy lifecycle matrix: all scenarios passed")
 
 
