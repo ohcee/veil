@@ -3,6 +3,10 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#if defined(HAVE_CONFIG_H)
+#include <config/veil-config.h>   // for VEIL_REGTEST_DEBUG_HOOKS (regtest test hook)
+#endif
+
 #include <veil/ringct/anonwallet.h>
 
 #include <crypto/hmac_sha256.h>

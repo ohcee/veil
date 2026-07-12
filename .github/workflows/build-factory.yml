@@ -382,6 +382,7 @@ jobs:
       run: |
         ./configure --disable-jni --without-gui --enable-tests --disable-bench \
           --with-sanitizers=address,undefined --disable-hardening \
+          --enable-regtest-debug-hooks \
           CXXFLAGS="-O1 -g -fno-omit-frame-pointer" \
           --prefix=$(realpath depends/x86_64-pc-linux-gnu)
       working-directory: ${{ env.SOURCE_ARTIFACT }}
