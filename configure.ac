@@ -270,6 +270,20 @@ AC_ARG_ENABLE([werror],
     [enable_werror=$enableval],
     [enable_werror=no])
 
+# Regtest-only debug/test hooks. Compiles in test instrumentation such as the
+# RingCT over-mint hook (a code path capable of constructing an over-value
+# blinded stake coinbase). NEVER enable this for release or mainnet builds:
+# when off (the default) the capability is absent from the binary entirely.
+AC_ARG_ENABLE([regtest-debug-hooks],
+    [AS_HELP_STRING([--enable-regtest-debug-hooks],
+                    [compile in regtest-only debug/test hooks; never for release builds (default is no)])],
+    [enable_regtest_debug_hooks=$enableval],
+    [enable_regtest_debug_hooks=no])
+if test "x$enable_regtest_debug_hooks" = xyes; then
+  AC_DEFINE([VEIL_REGTEST_DEBUG_HOOKS], [1],
+            [Define to compile in regtest-only debug/test hooks. Never define for release builds.])
+fi
+
 AC_LANG_PUSH([C++])
 AX_CHECK_COMPILE_FLAG([-Werror],[CXXFLAG_WERROR="-Werror"],[CXXFLAG_WERROR=""])
 

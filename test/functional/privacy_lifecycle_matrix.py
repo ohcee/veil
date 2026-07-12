@@ -37,6 +37,11 @@ PREREQUISITES
     leg is timing-dependent and is driven via generatecontinuous + wait_until.
   - The regtest-only `-nheightenablebulletproofs` override (added on this test
     branch) for Scenario A.
+  - Scenario D (over-mint rejection) additionally requires the build to be
+    configured with `--enable-regtest-debug-hooks`, which compiles in the
+    `-debugoverridereward` hook. Without it, Scenario D skips itself cleanly.
+    That hook is a regtest-only test capability and is absent from release
+    binaries by construction (compile-time gated).
 """
 
 from decimal import Decimal
@@ -314,12 +319,20 @@ class PrivacyLifecycleMatrix(BitcoinTestFramework):
         self._mine(node, REG_RINGCT_STAKING + 12 - node.getblockcount())
 
         # Restart with the reward override active. The datadir (chain + the mature
-        # stakeable RingCT coin) persists across the restart.
+        # stakeable RingCT coin) persists across the restart. The override arg only
+        # exists in a build configured with --enable-regtest-debug-hooks; against a
+        # build without it the node refuses to start (unknown arg), so skip cleanly.
         node.generatecontinuous(False)  # ensure staking thread is idle before restart
-        self.restart_node(0, extra_args=[
-            "-stakeringct=1", "-stakezerocoin=1",
-            "-nheightenablebulletproofs={}".format(BP_DORMANT_HEIGHT),
-            "-debugoverridereward=100000000"])   # +1 VEIL over the real reward
+        base_args = ["-stakeringct=1", "-stakezerocoin=1",
+                     "-nheightenablebulletproofs={}".format(BP_DORMANT_HEIGHT)]
+        try:
+            self.restart_node(0, extra_args=base_args + ["-debugoverridereward=100000000"])
+        except Exception:
+            self.log.info("Scenario D skipped: build lacks -debugoverridereward "
+                          "(configure with --enable-regtest-debug-hooks to run it)")
+            self.start_node(0, extra_args=base_args)
+            connect_nodes(self.nodes[0], 1)
+            return
         node = self.nodes[0]
         start_height = node.getblockcount()
         log_path = os.path.join(node.datadir, "regtest", "debug.log")

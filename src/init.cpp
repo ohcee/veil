@@ -562,7 +562,9 @@ void SetupServerArgs()
     gArgs.AddArg("-limitdescendantsize=<n>", strprintf("Do not accept transactions if any ancestor would have more than <n> kilobytes of in-mempool descendants (default: %u).", DEFAULT_DESCENDANT_SIZE_LIMIT), true, OptionsCategory::DEBUG_TEST);
     gArgs.AddArg("-vbparams=deployment:start:end", "Use given start/end times for specified version bits deployment (regtest-only)", true, OptionsCategory::DEBUG_TEST);
     gArgs.AddArg("-nheightenablebulletproofs=<n>", "Override the Bulletproof activation height (regtest-only)", true, OptionsCategory::DEBUG_TEST);
+#if defined(VEIL_REGTEST_DEBUG_HOOKS)
     gArgs.AddArg("-debugoverridereward=<amount>", "Regtest testing only: inflate the RingCT stake coinbase reward by <amount> sats to exercise the consensus over-mint rejection (default: 0)", true, OptionsCategory::DEBUG_TEST);
+#endif
     gArgs.AddArg("-addrmantest", "Allows to test address relay on localhost", true, OptionsCategory::DEBUG_TEST);
     gArgs.AddArg("-debug=<category>", "Output debugging information (default: -nodebug, supplying <category> is optional). "
         "If <category> is not supplied or if <category> = 1, output all debugging information. <category> can be: " + ListLogCategories() + ".", false, OptionsCategory::DEBUG_TEST);
@@ -1310,6 +1312,22 @@ bool AppInitParameterInteraction()
         UpdateBulletproofActivationHeight(nHeight);
         LogPrintf("Overriding Bulletproof activation height to %d (regtest)\n", nHeight);
     }
+
+#if defined(VEIL_REGTEST_DEBUG_HOOKS)
+    // Hard startup refusal for the over-mint test hook, matching the
+    // -nheightenablebulletproofs precedent. The wallet-side capability is already
+    // compile-time gated behind VEIL_REGTEST_DEBUG_HOOKS; this refuses to run it off
+    // regtest even within a debug build, and warns loudly when it is armed.
+    if (gArgs.IsArgSet("-debugoverridereward")) {
+        if (!chainparams.MineBlocksOnDemand()) {
+            return InitError("-debugoverridereward may only be used on regtest.");
+        }
+        if (gArgs.GetArg("-debugoverridereward", 0) != 0) {
+            LogPrintf("WARNING: -debugoverridereward is set; this node will build over-value "
+                      "RingCT stake coinbases that consensus rejects. Regtest testing only.\n");
+        }
+    }
+#endif // VEIL_REGTEST_DEBUG_HOOKS
 
 
     return true;
