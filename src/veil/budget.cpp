@@ -3,6 +3,8 @@
 #include <consensus/validation.h>
 #include <key_io.h>
 
+#include <limits>
+
 namespace veil {
 
 bool CheckBudgetTransaction(const int nHeight, const CTransaction& tx, CValidationState& state)
@@ -66,6 +68,17 @@ bool CheckBudgetTransaction(const int nHeight, const CTransaction& tx, CValidati
  */
 bool BudgetParams::IsSuperBlock(int nBlockHeight)
 {
+    // Superblocks are retired from nHeightSuperblockEnd onward. Every founder, foundation
+    // and budget payment in GetBlockRewards() is already gated on IsSuperBlock(), so this
+    // single check zeroes all three. The coins those payments would have created stay
+    // unissued and are emitted to miners and stakers instead by pushing out
+    // nHeightSupplyCreationStop and nLastPOWBlock in chainparams.
+    // This must stay height gated. GetBlockRewards() feeds nCreationLimit in ConnectBlock(),
+    // so returning false for a historical superblock makes that block look like it minted
+    // coins from nothing and every node syncing from genesis would reject the chain.
+    if (nBlockHeight >= Get()->nHeightSuperblockEnd)
+        return false;
+
     return (
             (Params().NetworkIDString() == "main" && nBlockHeight % nBlocksPerPeriod == 0) ||
             ((Params().NetworkIDString() == "test" || Params().NetworkIDString() == "dev") && (nBlockHeight % nBlocksPerPeriod == 20000 || nBlockHeight == 1))
@@ -162,10 +175,18 @@ void BudgetParams::GetBlockRewards(int nBlockHeight, CAmount& nBlockReward,
 
 BudgetParams::BudgetParams(std::string strNetwork)
 {
+    // Default to never retiring superblocks. Must be set before the per network block below:
+    // a zero here would disable superblocks from genesis on any chain we forget to cover.
+    nHeightSuperblockEnd = std::numeric_limits<int>::max();
+
     // Addresses must decode to be different, otherwise CheckBudgetTransaction() will fail
     if (strNetwork == "main") {
         nHeightAddressChange_legacy = 302401;
         nHeightAddressChange_302401 = 910000;
+        // Last paying superblock is 4060800. From 4104000 on, the whole monthly payout
+        // (2 VEIL/block foundation + 8 VEIL/block budget) stops and those 57,456,000 VEIL
+        // are emitted to miners and stakers instead over a longer tail.
+        nHeightSuperblockEnd = 4104000;
         budgetAddress_legacy = "3MvD3sxedwPzGSdLnehegDfBGfxpdMevk2";
         budgetAddress_302401 = "3LcNKTQSnxkdeuFkCNHet3XkEcUEyeENMF";
         budgetAddress = "35uS99ZnfaYB293sJ8ptUEXkUTQXH8WnDe";
@@ -206,6 +227,11 @@ std::string BudgetParams::GetFoundationAddress(int nHeight) const
     if (nHeight < nHeightAddressChange_legacy)
         return foundationAddress_legacy;
     return  foundationAddress;
+}
+
+int BudgetParams::SuperblockEndHeight()
+{
+    return Get()->nHeightSuperblockEnd;
 }
 
 BudgetParams* BudgetParams::Get()

@@ -25,9 +25,11 @@ private:
     std::string foundationAddress;
     int nHeightAddressChange_legacy;
     int nHeightAddressChange_302401;
+    int nHeightSuperblockEnd;
 
 public:
     static bool IsSuperBlock(int nBlockHeight);
+    static int SuperblockEndHeight();
     static BudgetParams* Get();
 
     static void GetBlockRewards(int nBlockHeight,

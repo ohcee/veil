@@ -366,8 +366,12 @@ public:
         nCoinbaseMaturity = 100;
         nHeightRejectStealthOrRingCTCoinbase = 3890103;
         nProofOfFullNodeRounds = 4;
-        nLastPOWBlock = 9816000; // Continue POW until supply creation ends
-        nHeightSupplyCreationStop = 9816000; //Should create very close to 300m coins at this time
+        // Superblocks retire at height 4104000 (veil::BudgetParams). That frees 57,456,000 VEIL
+        // that would have gone to the foundation and budget. Emitting it to miners and stakers
+        // at the flat 10 VEIL/block tail rate takes 5,745,600 more blocks, so both the supply
+        // stop and the last PoW block move out by that much. Total supply is unchanged.
+        nLastPOWBlock = 15561600; // Continue POW until supply creation ends
+        nHeightSupplyCreationStop = 15561600; //Should create very close to 300m coins at this time
         nTimeEnforceWeightReduction = 1548619029; //Stake weight must be reduced for higher denominations
         nHeightProtocolBumpEnforcement = 86350; // 50 blocks before superblock
         nHeightCheckDenom = 321700;
