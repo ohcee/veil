@@ -12,6 +12,7 @@
 #include <util/strencodings.h>
 
 #include <assert.h>
+#include <limits>
 
 #include "arith_uint256.h"
 #include "key.h"
@@ -207,6 +208,11 @@ public:
         consensus.nProgPowTargetSpacing = 172;
         consensus.nRandomXTargetSpacing = 600;
         consensus.nSha256DTargetSpacing = 1200;
+        consensus.nSha256dLwmaHeight = std::numeric_limits<int>::max(); // mainnet: set when the fork height is chosen
+        consensus.nLwmaPastBlocks = 60;
+        consensus.nLwmaWindowMultiplier = 2; // 40 hours for SHA256d
+        consensus.nLwmaBrakeBlocks = 10;
+        consensus.nLwmaBrakeFactor = 4;
 
         consensus.nDgwPastBlocks = 60; // number of blocks to average in Dark Gravity Wave
         consensus.nDgwPastBlocks_old  = 30; // number of blocks to average in Dark Gravity Wave
@@ -412,6 +418,11 @@ public:
         consensus.nProgPowTargetSpacing = 172;
         consensus.nRandomXTargetSpacing = 600;
         consensus.nSha256DTargetSpacing = 1200;
+        consensus.nSha256dLwmaHeight = std::numeric_limits<int>::max(); // testnet: set when the fork height is chosen
+        consensus.nLwmaPastBlocks = 60;
+        consensus.nLwmaWindowMultiplier = 2; // 40 hours for SHA256d
+        consensus.nLwmaBrakeBlocks = 10;
+        consensus.nLwmaBrakeFactor = 4;
 
         consensus.nDgwPastBlocks = 60; // number of blocks to average in Dark Gravity Wave
         consensus.nDgwPastBlocks_old = 60; // number of blocks to average in Dark Gravity Wave
@@ -587,6 +598,11 @@ public:
         consensus.nProgPowTargetSpacing = 172;
         consensus.nRandomXTargetSpacing = 600;
         consensus.nSha256DTargetSpacing = 1200;
+        consensus.nSha256dLwmaHeight = std::numeric_limits<int>::max(); // devnet: set when the fork height is chosen
+        consensus.nLwmaPastBlocks = 60;
+        consensus.nLwmaWindowMultiplier = 2; // 40 hours for SHA256d
+        consensus.nLwmaBrakeBlocks = 10;
+        consensus.nLwmaBrakeFactor = 4;
 
         consensus.nDgwPastBlocks = 60; // number of blocks to average in Dark Gravity Wave
         consensus.nDgwPastBlocks_old = 60; // number of blocks to average in Dark Gravity Wave
@@ -764,6 +780,11 @@ public:
         consensus.nProgPowTargetSpacing = 172;
         consensus.nRandomXTargetSpacing = 600;
         consensus.nSha256DTargetSpacing = 1200;
+        consensus.nSha256dLwmaHeight = 0;
+        consensus.nLwmaPastBlocks = 60;
+        consensus.nLwmaWindowMultiplier = 2; // 40 hours for SHA256d
+        consensus.nLwmaBrakeBlocks = 10;
+        consensus.nLwmaBrakeFactor = 4;
 
         consensus.nDgwPastBlocks = 60; // number of blocks to average in Dark Gravity Wave
         consensus.nDgwPastBlocks_old = 60; // number of blocks to average in Dark Gravity Wave

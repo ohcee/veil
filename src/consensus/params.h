@@ -87,6 +87,18 @@ struct Params {
     int64_t nProgPowTargetSpacing;
     int64_t nRandomXTargetSpacing;
     int64_t nSha256DTargetSpacing;
+
+    /**
+     * LWMA retarget for SHA256d (pow.cpp LwmaRetarget), replacing DarkGravityWave for that
+     * algo from nSha256dLwmaHeight. Window of nLwmaPastBlocks blocks of the algo, no older than
+     * nLwmaWindowMultiplier * nLwmaPastBlocks * spacing at the tip; the burst brake never lets the
+     * requirement be easier than nLwmaBrakeFactor times the level over the last nLwmaBrakeBlocks.
+     */
+    int nSha256dLwmaHeight;
+    int64_t nLwmaPastBlocks;
+    int64_t nLwmaWindowMultiplier;
+    int64_t nLwmaBrakeBlocks;
+    int64_t nLwmaBrakeFactor;
 };
 } // namespace Consensus
 

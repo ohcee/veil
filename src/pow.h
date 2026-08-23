@@ -30,6 +30,12 @@ unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHead
                                     bool fProofOfStake, int nPoWType);
 unsigned int DGW_old(const CBlockIndex* pindexLast, const Consensus::Params& params, bool fProofOfStake);
 unsigned int DarkGravityWave(const CBlockIndex* pindexLast, const Consensus::Params& params, bool fProofOfStake, int nPoWType);
+/**
+ * LWMA retarget with a time decay for algos that go dark, used for SHA256d from
+ * params.nSha256dLwmaHeight. nActivationHeight tells it which blocks were mined under this rule
+ * (their time factor is divided back out of the level). PoW only.
+ */
+unsigned int LwmaRetarget(const CBlockIndex* pindexLast, const Consensus::Params& params, int nPoWType, int nActivationHeight);
 
 /** Check whether a block hash satisfies the proof-of-work requirement specified by nBits */
 bool CheckProofOfWork(uint256 hash, unsigned int nBits, const Consensus::Params&, int algo = 0);

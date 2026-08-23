@@ -12,6 +12,10 @@
 #include <tinyformat.h>
 #include <boost/thread.hpp>
 
+#include <algorithm>
+#include <cstring>
+#include <vector>
+
 // ProgPow
 #include <crypto/ethash/lib/ethash/endianness.hpp>
 
@@ -156,6 +160,12 @@ unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHead
         // Use old algo
         return DGW_old(pindexLast, params, fProofOfStake);
     }
+
+    if (!fProofOfStake && (nPoWType & CBlockHeader::SHA256D_BLOCK) && pindexLast->nHeight + 1 >= params.nSha256dLwmaHeight) {
+        // SHA256d retargets with the LWMA rule from the activation height
+        return LwmaRetarget(pindexLast, params, nPoWType, params.nSha256dLwmaHeight);
+    }
+
     // Retarget every block with DarkGravityWave
     return DarkGravityWave(pindexLast, params, fProofOfStake, nPoWType);
 }
@@ -387,6 +397,167 @@ unsigned int DarkGravityWave(const CBlockIndex* pindexLast, const Consensus::Par
     LogPrint(BCLog::BLOCKCREATION, "%s: Adjusting %s: new target: %s\n",
              __func__, GetMiningType(nPoWType, fProofOfStake).c_str(), bnNew.GetHex());
     return bnNew.GetCompact();
+}
+
+namespace {
+
+struct LwmaBlock {
+    int64_t nTime;       // the block's own time
+    int64_t nPrevTime;   // time of the block it was built on (what its miner saw as the tip)
+    int64_t nSinceLast;  // seconds from the previous block of the algo to that tip, 0 for the oldest
+    int nHeight;
+    arith_uint256 bnTarget;
+};
+
+bool IsAlgoBlock(const CBlockIndex* pindex, int nPoWType)
+{
+    if (pindex->IsProofOfStake())
+        return false;
+    if (nPoWType & CBlockHeader::PROGPOW_BLOCK)
+        return pindex->IsProgProofOfWork();
+    if (nPoWType & CBlockHeader::RANDOMX_BLOCK)
+        return pindex->IsRandomXProofOfWork();
+    if (nPoWType & CBlockHeader::SHA256D_BLOCK)
+        return pindex->IsSha256DProofOfWork();
+    return false;
+}
+
+arith_uint512 Widen(const arith_uint256& a)
+{
+    uint256 u = ArithToUint256(a);
+    uint512 v;
+    memcpy(v.begin(), u.begin(), u.size());
+    return UintToArith512(v);
+}
+
+// Caller guarantees a < 2^256
+arith_uint256 Narrow(const arith_uint512& a)
+{
+    uint512 v = ArithToUint512(a);
+    uint256 u;
+    memcpy(u.begin(), v.begin(), u.size());
+    return UintToArith256(u);
+}
+
+/**
+ * Level of the window: the target at which the blocks would have come exactly nSpacing apart,
+ * estimated as weighted time over weighted work (Zawy's LWMA weights, newest heaviest).
+ * Each block's work is taken at the level its miner was held to, i.e. the time factor that
+ * lowered its requirement is divided back out; blocks mined before the activation height had
+ * no such factor. vBlocks is oldest first, the first entry only provides the starting time.
+ * Returns 2^256 * sum(i * solvetime_i) / sum(i * work_i * factor_i) as a 512 bit value.
+ */
+arith_uint512 LwmaLevel(const std::vector<LwmaBlock>& vBlocks, int64_t nSpacing, int nActivationHeight)
+{
+    int64_t nPrevTime = vBlocks[0].nTime;
+    int64_t nSumTime = 0;
+    arith_uint512 bnSumWork = 0;
+    for (size_t i = 1; i < vBlocks.size(); i++) {
+        const LwmaBlock& block = vBlocks[i];
+        // Solvetimes are at least one second; Veil only allows a block time 15 s before its
+        // parent and 75 s into the future, so no clamp on long solvetimes is needed.
+        int64_t nTime = block.nTime > nPrevTime ? block.nTime : nPrevTime + 1;
+        int64_t nSolveTime = nTime - nPrevTime;
+        nPrevTime = nTime;
+        nSumTime += nSolveTime * (int64_t)i;
+
+        int64_t nFactor = nSpacing;
+        if (block.nHeight >= nActivationHeight && block.nSinceLast > nSpacing)
+            nFactor = block.nSinceLast;
+
+        // Same work formula as GetBlockProof: 2^256 / (target + 1)
+        arith_uint512 bnWork = Widen((~block.bnTarget / (block.bnTarget + 1)) + 1);
+        bnWork *= arith_uint512((uint64_t)nFactor);
+        bnWork *= arith_uint512((uint64_t)i);
+        bnSumWork += bnWork;
+    }
+    if (bnSumWork == 0)
+        return arith_uint512(0);
+    arith_uint512 bnLevel = 1;
+    bnLevel <<= 256;
+    bnLevel *= arith_uint512((uint64_t)nSumTime);
+    bnLevel /= bnSumWork;
+    return bnLevel;
+}
+
+} // namespace
+
+unsigned int LwmaRetarget(const CBlockIndex* pindexLast, const Consensus::Params& params, int nPoWType, int nActivationHeight)
+{
+    const arith_uint256 bnPowLimit = GetPowLimit(nPoWType);
+    const int64_t nSpacing = Params().GetTargetSpacing(pindexLast, nPoWType, false);
+    const int64_t nPastBlocks = params.nLwmaPastBlocks;
+    const int64_t nWindowSeconds = params.nLwmaWindowMultiplier * nPastBlocks * nSpacing;
+    const int64_t nTipTime = pindexLast->GetBlockTime();
+
+    // The newest nPastBlocks + 1 blocks of the algo, oldest first
+    std::vector<LwmaBlock> vBlocks;
+    vBlocks.reserve(nPastBlocks + 1);
+    for (const CBlockIndex* pindex = pindexLast; pindex && (int64_t)vBlocks.size() < nPastBlocks + 1; pindex = pindex->pprev) {
+        if (pindex->GetBlockTime() < Params().PowUpdateTimestamp())
+            break;
+        if (!IsAlgoBlock(pindex, nPoWType))
+            continue;
+        LwmaBlock block;
+        block.nTime = pindex->GetBlockTime();
+        block.nPrevTime = pindex->pprev ? pindex->pprev->GetBlockTime() : block.nTime;
+        block.nSinceLast = 0;
+        block.nHeight = pindex->nHeight;
+        block.bnTarget.SetCompact(pindex->nBits);
+        vBlocks.push_back(block);
+    }
+    if (vBlocks.size() < 2)
+        return bnPowLimit.GetCompact();
+    std::reverse(vBlocks.begin(), vBlocks.end());
+    for (size_t i = 1; i < vBlocks.size(); i++) {
+        int64_t nSinceLast = vBlocks[i].nPrevTime - vBlocks[i - 1].nTime;
+        vBlocks[i].nSinceLast = nSinceLast > 0 ? nSinceLast : 0;
+    }
+
+    // Window bounded by time, so after the algo has been dark the level follows whoever is
+    // still mining. Always keep the newest two.
+    std::vector<LwmaBlock> vWindow;
+    for (const LwmaBlock& block : vBlocks) {
+        if (block.nTime >= nTipTime - nWindowSeconds)
+            vWindow.push_back(block);
+    }
+    if (vWindow.size() < 2)
+        vWindow.assign(vBlocks.end() - 2, vBlocks.end());
+
+    arith_uint512 bnLevel = LwmaLevel(vWindow, nSpacing, nActivationHeight);
+
+    // Burst brake: never easier than nLwmaBrakeFactor times the level over the last
+    // nLwmaBrakeBlocks. Inert while blocks arrive normally, bites within a few blocks when a
+    // large miner returns to a lowered requirement.
+    bool fBraked = false;
+    if ((int64_t)vBlocks.size() >= params.nLwmaBrakeBlocks + 1) {
+        std::vector<LwmaBlock> vShort(vBlocks.end() - (params.nLwmaBrakeBlocks + 1), vBlocks.end());
+        arith_uint512 bnShort = LwmaLevel(vShort, nSpacing, nActivationHeight);
+        bnShort *= arith_uint512((uint64_t)params.nLwmaBrakeFactor);
+        if (bnShort < bnLevel) {
+            bnLevel = bnShort;
+            fBraked = true;
+        }
+    }
+
+    // Time decay: from one spacing after the last block of the algo the requirement falls in
+    // proportion to the time since that block (no block for x seconds means the hashrate is at
+    // most what would produce one block in x seconds).
+    int64_t nSinceLast = nTipTime - vBlocks.back().nTime;
+    if (nSinceLast < nSpacing)
+        nSinceLast = nSpacing;
+    arith_uint512 bnNew = bnLevel;
+    bnNew *= arith_uint512((uint64_t)nSinceLast);
+    bnNew /= arith_uint512((uint64_t)nSpacing);
+
+    const arith_uint512 bnLimit = Widen(bnPowLimit);
+    if (bnNew > bnLimit || bnLevel == 0)
+        bnNew = bnLimit;
+
+    LogPrint(BCLog::BLOCKCREATION, "%s: %s window=%d blocks, since last=%d s, braked=%d, new target: %s\n", __func__,
+             GetMiningType(nPoWType, false).c_str(), (int)vWindow.size(), nTipTime - vBlocks.back().nTime, fBraked,
+             Narrow(bnNew).GetHex());
+    return Narrow(bnNew).GetCompact();
 }
 
 bool CheckProofOfWork(uint256 hash, unsigned int nBits, const Consensus::Params& params, int algo)
