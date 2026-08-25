@@ -27,21 +27,26 @@ constexpr int num_math_operations = 18;
 constexpr size_t l1_cache_size = 16 * 1024;
 constexpr size_t l1_cache_num_items = l1_cache_size / sizeof(uint32_t);
 
+// The `period` argument is the number of consecutive blocks that share one random
+// program (see period_length). It defaults to the vendored constant so existing
+// callers and the ProgPoW spec test vectors are unaffected; Veil passes a
+// height-dependent value (CChainParams::GetProgPowPeriod) to shorten it at a fork.
 result hash(const epoch_context& context, int block_number, const hash256& header_hash,
-    uint64_t nonce) noexcept;
+    uint64_t nonce, int period = period_length) noexcept;
 
 result hash(const epoch_context_full& context, int block_number, const hash256& header_hash,
-    uint64_t nonce) noexcept;
+    uint64_t nonce, int period = period_length) noexcept;
 
 bool verify(const epoch_context& context, int block_number, const hash256& header_hash,
-    const hash256& mix_hash, uint64_t nonce, const hash256& boundary) noexcept;
+    const hash256& mix_hash, uint64_t nonce, const hash256& boundary,
+    int period = period_length) noexcept;
 
 search_result search_light(const epoch_context& context, int block_number,
     const hash256& header_hash, const hash256& boundary, uint64_t start_nonce,
-    size_t iterations) noexcept;
+    size_t iterations, int period = period_length) noexcept;
 
 search_result search(const epoch_context_full& context, int block_number,
     const hash256& header_hash, const hash256& boundary, uint64_t start_nonce,
-    size_t iterations) noexcept;
+    size_t iterations, int period = period_length) noexcept;
 
 }  // namespace progpow

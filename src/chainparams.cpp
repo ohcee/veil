@@ -6,12 +6,14 @@
 
 #include <chainparams.h>
 #include <consensus/merkle.h>
+#include <crypto/ethash/include/ethash/progpow.hpp>
 
 #include <tinyformat.h>
 #include <util/system.h>
 #include <util/strencodings.h>
 
 #include <assert.h>
+#include <limits>
 
 #include "arith_uint256.h"
 #include "key.h"
@@ -378,6 +380,9 @@ public:
         nValueBlacklist = (282125 + 60540) * COIN;
         nHeightEnforceBlacklist = 336413;
         nHeightProgPowDAGSizeReduction = 2100000;
+        // PLACEHOLDER: disabled (period stays 10) until the hard-fork height is chosen.
+        // Rides the superblock-retire fork; retarget together with those constants.
+        nProgPowPeriodV2Height = std::numeric_limits<int>::max();
         nPreferredMintsPerBlock = 70; //Miner will not include more than this many mints per block
         nPreferredMintsPerTx = 15; //Do not consider a transaction as standard that includes more than this many mints
 
@@ -557,6 +562,8 @@ public:
         nHeightLightZerocoin = 9428;
         nHeightEnforceBlacklist = 0;
         nHeightProgPowDAGSizeReduction = 1125000;
+        // PLACEHOLDER: disabled until a testnet fork height is chosen.
+        nProgPowPeriodV2Height = std::numeric_limits<int>::max();
 
         /** RingCT/Stealth **/
         nDefaultRingSize = 11;
@@ -730,6 +737,8 @@ public:
         nHeightLightZerocoin = 1000;
         nHeightEnforceBlacklist = 0;
         nHeightProgPowDAGSizeReduction = 1071250;
+        // PLACEHOLDER: disabled until a devnet fork height is chosen.
+        nProgPowPeriodV2Height = std::numeric_limits<int>::max();
 
         /** RingCT/Stealth **/
         nDefaultRingSize = 11;
@@ -887,6 +896,7 @@ public:
         nHeightLightZerocoin = 500;
         nZerocoinRequiredStakeDepthV2 = 10; //The required confirmations for a zerocoin to be stakable
         nHeightEnforceBlacklist = 0;
+        nProgPowPeriodV2Height = 0; // ProgPow period-2 active from genesis on regtest for end-to-end testing
 
         nMaxHeaderRequestWithoutPoW = 50;
         nPreferredMintsPerBlock = 70; //Miner will not include more than this many mints per block
@@ -974,6 +984,17 @@ std::pair<int, int> CChainParams::GetProgPowNextEpoch(int blockNumber) const {
     }
 
     return { currentEpoch + 1, currentEpochStart + epochLength };
+}
+
+// The shortened ProgPow period that activates at HeightProgPowPeriodV2(). The random
+// program is regenerated every this-many blocks; below the fork it is the vendored
+// progpow::period_length (10). A shorter period gives fixed-function hardware a smaller
+// window to amortise a compiled program, keeping the algorithm GPU-friendly.
+static constexpr int PROGPOW_PERIOD_V2 = 2;
+
+int CChainParams::GetProgPowPeriod(int blockNumber) const
+{
+    return blockNumber >= HeightProgPowPeriodV2() ? PROGPOW_PERIOD_V2 : progpow::period_length;
 }
 
 

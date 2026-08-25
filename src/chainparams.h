@@ -148,6 +148,7 @@ public:
     int HeightLightZerocoin() const { return nHeightLightZerocoin; }
     int HeightEnforceBlacklist() const { return nHeightEnforceBlacklist; }
     int HeightProgPowDAGSizeReduction() const { return nHeightProgPowDAGSizeReduction; }
+    int HeightProgPowPeriodV2() const { return nProgPowPeriodV2Height; }
 
     uint32_t PowUpdateTimestamp() const { return nPowUpdateTimestamp; }
     uint64_t KIforkTimestamp() const { return nTimeKIfork; }
@@ -174,6 +175,13 @@ public:
      * Returns a pair with <next epoch, height of next epoch> for the specified block number
      */
     std::pair<int, int> GetProgPowNextEpoch(int blockNumber) const;
+    /**
+     * Returns the ProgPow period length (blocks per random-program) for the specified
+     * block number: the legacy length below HeightProgPowPeriodV2(), the shortened
+     * length at and above it. The period is a hard-fork consensus parameter, so every
+     * validator and miner must apply the same gate.
+     */
+    int GetProgPowPeriod(int blockNumber) const;
 
 
 protected:
@@ -238,6 +246,7 @@ protected:
     int nHeightLightZerocoin;
     int nHeightEnforceBlacklist;
     int nHeightProgPowDAGSizeReduction;
+    int nProgPowPeriodV2Height; // height the ProgPow period shortens to PROGPOW_PERIOD_V2 (hard fork)
 
     //Settings that are not chain critical, but should not be edited unless the person changing understands the consequence
     int nMaxHeaderRequestWithoutPoW;

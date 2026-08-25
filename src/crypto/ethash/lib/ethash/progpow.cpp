@@ -244,10 +244,11 @@ mix_array init_mix(uint32_t* hash_seed)
 }
 
 hash256 hash_mix(
-        const epoch_context& context, int block_number, uint32_t * seed, lookup_fn lookup) noexcept
+        const epoch_context& context, int block_number, uint32_t * seed, lookup_fn lookup,
+        int period) noexcept
 {
     auto mix = init_mix(seed);
-    auto number = uint64_t(block_number / period_length);
+    auto number = uint64_t(block_number / period);
     uint32_t new_state[2];
     new_state[0] = number;
     new_state[1] = number >> 32;
@@ -277,7 +278,7 @@ hash256 hash_mix(
 }  // namespace
 
 result hash(const epoch_context& context, int block_number, const hash256& header_hash,
-    uint64_t nonce) noexcept
+    uint64_t nonce, int period) noexcept
 {
     uint32_t hash_seed[2];  // KISS99 initiator
 
@@ -307,7 +308,7 @@ result hash(const epoch_context& context, int block_number, const hash256& heade
 
     hash_seed[0] = state2[0];
     hash_seed[1] = state2[1];
-    const hash256 mix_hash = hash_mix(context, block_number, hash_seed, calculate_dataset_item_2048);
+    const hash256 mix_hash = hash_mix(context, block_number, hash_seed, calculate_dataset_item_2048, period);
 
     // Absorb phase for last round of keccak (256 bits)
 
@@ -336,7 +337,7 @@ result hash(const epoch_context& context, int block_number, const hash256& heade
 }
 
 result hash(const epoch_context_full& context, int block_number, const hash256& header_hash,
-    uint64_t nonce) noexcept
+    uint64_t nonce, int period) noexcept
 {
     static const auto lazy_lookup = [](const epoch_context& ctx, uint32_t index) noexcept
     {
@@ -382,7 +383,7 @@ result hash(const epoch_context_full& context, int block_number, const hash256& 
     hash_seed[0] = state2[0];
     hash_seed[1] = state2[1];
 
-    const hash256 mix_hash = hash_mix(context, block_number, hash_seed, lazy_lookup);
+    const hash256 mix_hash = hash_mix(context, block_number, hash_seed, lazy_lookup, period);
 
     // Absorb phase for last round of keccak (256 bits)
 
@@ -410,7 +411,7 @@ result hash(const epoch_context_full& context, int block_number, const hash256& 
 }
 
 bool verify(const epoch_context& context, int block_number, const hash256& header_hash,
-    const hash256& mix_hash, uint64_t nonce, const hash256& boundary) noexcept
+    const hash256& mix_hash, uint64_t nonce, const hash256& boundary, int period) noexcept
 {
     uint32_t hash_seed[2];  // KISS99 initiator
     uint32_t state2[8];
@@ -469,19 +470,19 @@ bool verify(const epoch_context& context, int block_number, const hash256& heade
     }
 
     const hash256 expected_mix_hash =
-            hash_mix(context, block_number, hash_seed, calculate_dataset_item_2048);
+            hash_mix(context, block_number, hash_seed, calculate_dataset_item_2048, period);
 
     return is_equal(expected_mix_hash, mix_hash);
 }
 
 search_result search_light(const epoch_context& context, int block_number,
     const hash256& header_hash, const hash256& boundary, uint64_t start_nonce,
-    size_t iterations) noexcept
+    size_t iterations, int period) noexcept
 {
     const uint64_t end_nonce = start_nonce + iterations;
     for (uint64_t nonce = start_nonce; nonce < end_nonce; ++nonce)
     {
-        result r = hash(context, block_number, header_hash, nonce);
+        result r = hash(context, block_number, header_hash, nonce, period);
         if (is_less_or_equal(r.final_hash, boundary))
             return {r, nonce};
     }
@@ -490,12 +491,12 @@ search_result search_light(const epoch_context& context, int block_number,
 
 search_result search(const epoch_context_full& context, int block_number,
     const hash256& header_hash, const hash256& boundary, uint64_t start_nonce,
-    size_t iterations) noexcept
+    size_t iterations, int period) noexcept
 {
     const uint64_t end_nonce = start_nonce + iterations;
     for (uint64_t nonce = start_nonce; nonce < end_nonce; ++nonce)
     {
-        result r = hash(context, block_number, header_hash, nonce);
+        result r = hash(context, block_number, header_hash, nonce, period);
         if (is_less_or_equal(r.final_hash, boundary))
             return {r, nonce};
     }

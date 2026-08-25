@@ -13,6 +13,9 @@
 #include "crypto/ethash/helpers.hpp"
 #include "crypto/ethash/progpow_test_vectors.hpp"
 
+#include <chainparams.h>
+#include <chainparamsbase.h>
+
 #include <array>
 
 BOOST_FIXTURE_TEST_SUITE(progpow_tests, BasicTestingSetup)
@@ -173,5 +176,54 @@ BOOST_AUTO_TEST_CASE(progpow_veil_header)
 }
 
 
+// Height-gated ProgPow period (hard fork): the random program is regenerated every
+// `period` blocks, and the period shortens at the fork. These lock in that the new
+// `period` argument defaults to the vendored length (no behaviour change for existing
+// callers or spec vectors), that a shorter period actually selects a different program,
+// and that verify() is period-sensitive.
+BOOST_AUTO_TEST_CASE(progpow_period_hash)
+{
+    auto& context = get_ethash_epoch_context_0();
+    const auto header =
+        to_hash256("ffeeddccbbaa9988776655443322110000112233445566778899aabbccddeeff");
+    const uint64_t nonce = 0x123456789abcdef0;
+    const int block_number = 30; // 30/10 = 3, 30/2 = 15: the two periods pick different programs
+
+    // The default period argument equals progpow::period_length, so an unqualified call is
+    // bit-identical to passing the legacy length explicitly.
+    const auto def = progpow::hash(context, block_number, header, nonce);
+    const auto p_legacy = progpow::hash(context, block_number, header, nonce, progpow::period_length);
+    BOOST_CHECK_EQUAL(to_hex(def.final_hash), to_hex(p_legacy.final_hash));
+    BOOST_CHECK_EQUAL(to_hex(def.mix_hash), to_hex(p_legacy.mix_hash));
+
+    // A shorter period selects a different program for the same block, so the hash differs.
+    const auto p_short = progpow::hash(context, block_number, header, nonce, 2);
+    BOOST_CHECK(to_hex(p_short.final_hash) != to_hex(p_legacy.final_hash));
+
+    // verify() must accept the block only under the period it was hashed with.
+    BOOST_CHECK(progpow::verify(context, block_number, header, p_short.mix_hash, nonce,
+                                p_short.final_hash, 2));
+    BOOST_CHECK(!progpow::verify(context, block_number, header, p_short.mix_hash, nonce,
+                                 p_short.final_hash, progpow::period_length));
+
+    // Below period_length the program number is 0 for either period, so the seam is smooth.
+    const auto low_legacy = progpow::hash(context, 1, header, nonce, progpow::period_length);
+    const auto low_short = progpow::hash(context, 1, header, nonce, 2);
+    BOOST_CHECK_EQUAL(to_hex(low_legacy.final_hash), to_hex(low_short.final_hash));
+}
+
+// The consensus gate itself: GetProgPowPeriod returns the shortened period at and above
+// HeightProgPowPeriodV2() and the legacy period below it. Regtest (height 0) covers the
+// active branch; mainnet (placeholder disabled) covers the legacy branch.
+BOOST_AUTO_TEST_CASE(progpow_period_chainparams_gate)
+{
+    const auto regtest = CreateChainParams(CBaseChainParams::REGTEST);
+    BOOST_CHECK_EQUAL(regtest->GetProgPowPeriod(0), 2);
+    BOOST_CHECK_EQUAL(regtest->GetProgPowPeriod(1000000), 2);
+
+    const auto mainnet = CreateChainParams(CBaseChainParams::MAIN);
+    BOOST_CHECK_EQUAL(mainnet->GetProgPowPeriod(0), progpow::period_length);
+    BOOST_CHECK_EQUAL(mainnet->GetProgPowPeriod(9000000), progpow::period_length);
+}
 
 BOOST_AUTO_TEST_SUITE_END()

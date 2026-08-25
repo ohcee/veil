@@ -282,8 +282,10 @@ uint256 ProgPowHash(const CBlockHeader& blockHeader, uint256& mix_hash)
     uint256 nHeaderHash = blockHeader.GetProgPowHeaderHash();
     const auto header_hash = to_hash256(nHeaderHash.GetHex());
 
-    // ProgPow hash
-    const auto result = progpow::hash(*progpow_context, blockHeader.nHeight, header_hash, blockHeader.nNonce64);
+    // ProgPow hash. The period (blocks per random program) is a height-gated consensus
+    // parameter, shortened at the fork so a fixed hardware program covers fewer blocks.
+    const auto result = progpow::hash(*progpow_context, blockHeader.nHeight, header_hash,
+                                      blockHeader.nNonce64, Params().GetProgPowPeriod(blockHeader.nHeight));
 
     mix_hash = uint256S(to_hex(result.mix_hash));
 
