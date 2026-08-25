@@ -972,6 +972,7 @@ QDialog#OptionsDialog QGroupBox {
 }
 
 QDialog#OptionsDialog QSpinBox,
+QDialog#OptionsDialog QAbstractSpinBox,
 QDialog#OptionsDialog QLineEdit,
 QDialog#OptionsDialog QComboBox {
     color:#f7fbfe;
@@ -1022,6 +1023,12 @@ QDialog#OptionsDialog QSpinBox#databaseCache {
 
 /** threadsScriptVerif */
 QDialog#OptionsDialog QSpinBox#threadsScriptVerif {
+    border-bottom: 1px solid #bababa;
+}
+
+/** autoConvertThreshold (BitcoinAmountField wraps an AmountSpinBox, which is a
+    QAbstractSpinBox, not a QSpinBox, so it needs its own underline rule) */
+QDialog#OptionsDialog #autoConvertThreshold QAbstractSpinBox {
     border-bottom: 1px solid #bababa;
 }
 
