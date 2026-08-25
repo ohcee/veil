@@ -16,6 +16,7 @@
 #include <net.h>
 #include <netbase.h>
 #include <txdb.h> // for -dbcache defaults
+#include <util/moneystr.h> // for FormatMoney (autoconvert threshold)
 #include <qt/intro.h>
 
 #include <QNetworkProxy>
@@ -121,6 +122,26 @@ void OptionsModel::Init(bool resetSettings)
         settings.setValue("bSpendZeroConfChange", true);
     if (!m_node.softSetBoolArg("-spendzeroconfchange", settings.value("bSpendZeroConfChange").toBool()))
         addOverriddenOption("-spendzeroconfchange");
+
+    if (!settings.contains("bAutoConvertRingCT"))
+        settings.setValue("bAutoConvertRingCT", false); // matches DEFAULT_AUTOCONVERT
+    if (!m_node.softSetBoolArg("-autoconvert", settings.value("bAutoConvertRingCT").toBool()))
+        addOverriddenOption("-autoconvert");
+
+    if (!settings.contains("nAutoConvertThreshold"))
+        settings.setValue("nAutoConvertThreshold", qlonglong(10 * COIN)); // matches DEFAULT_AUTOCONVERT_THRESHOLD
+    {
+        qint64 nThreshold = settings.value("nAutoConvertThreshold").toLongLong();
+        if (nThreshold <= 0) {
+            // The wallet refuses to load on a zero -autoconvertthreshold, so never store or pass one.
+            nThreshold = 10 * COIN;
+            settings.setValue("nAutoConvertThreshold", qlonglong(nThreshold));
+        }
+        // Only push the arg when autoconvert is on; the threshold is meaningless otherwise.
+        if (settings.value("bAutoConvertRingCT").toBool()
+                && !m_node.softSetArg("-autoconvertthreshold", FormatMoney(nThreshold)))
+            addOverriddenOption("-autoconvertthreshold");
+    }
 
     // Orphans
     if (!settings.contains("bHideOrphans"))
@@ -292,6 +313,12 @@ QVariant OptionsModel::data(const QModelIndex & index, int role) const
         case SpendZeroConfChange:
             return settings.value("bSpendZeroConfChange");
 
+        case AutoConvertRingCT:
+            return settings.value("bAutoConvertRingCT");
+
+        case AutoConvertThreshold:
+            return settings.value("nAutoConvertThreshold");
+
         case HideOrphans:{
             return settings.value("bHideOrphans");
         }
@@ -410,6 +437,24 @@ bool OptionsModel::setData(const QModelIndex & index, const QVariant & value, in
                 setRestartRequired(true);
             }
             break;
+
+        case AutoConvertRingCT:
+            if (settings.value("bAutoConvertRingCT") != value) {
+                settings.setValue("bAutoConvertRingCT", value);
+                setRestartRequired(true);
+            }
+            break;
+
+        case AutoConvertThreshold: {
+            qint64 nThreshold = value.toLongLong();
+            if (nThreshold <= 0)
+                nThreshold = 10 * COIN; // guard: the wallet rejects a zero threshold
+            if (settings.value("nAutoConvertThreshold").toLongLong() != nThreshold) {
+                settings.setValue("nAutoConvertThreshold", qlonglong(nThreshold));
+                setRestartRequired(true);
+            }
+            break;
+        }
 
         case HideOrphans: {
             bHideOrphans = value.toBool();

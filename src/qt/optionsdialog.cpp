@@ -49,6 +49,10 @@ OptionsDialog::OptionsDialog(QWidget *parent, bool enableWallet) :
     ui->pruneSize->setEnabled(false);
     connect(ui->prune, SIGNAL(toggled(bool)), ui->pruneSize, SLOT(setEnabled(bool)));
 
+    // The autoconvert threshold only matters when autoconvert is on, so gate it on the checkbox.
+    ui->autoConvertThreshold->setEnabled(false);
+    connect(ui->autoConvertRingCT, SIGNAL(toggled(bool)), ui->autoConvertThreshold, SLOT(setEnabled(bool)));
+
     QSettings settings;
 
     // Hide orphans
@@ -205,6 +209,8 @@ void OptionsDialog::setModel(OptionsModel *_model)
     connect(ui->threadsScriptVerif, SIGNAL(valueChanged(int)), this, SLOT(showRestartWarning()));
     /* Wallet */
     connect(ui->spendZeroConfChange, SIGNAL(clicked(bool)), this, SLOT(showRestartWarning()));
+    connect(ui->autoConvertRingCT, SIGNAL(clicked(bool)), this, SLOT(showRestartWarning()));
+    connect(ui->autoConvertThreshold, SIGNAL(valueChanged()), this, SLOT(showRestartWarning()));
     connect(ui->applyDarkMode, SIGNAL(clicked(bool)), this, SLOT(showRestartWarning()));
     /* Network */
     connect(ui->allowIncoming, SIGNAL(clicked(bool)), this, SLOT(showRestartWarning()));
@@ -226,6 +232,8 @@ void OptionsDialog::setMapper()
 
     /* Wallet */
     mapper->addMapping(ui->spendZeroConfChange, OptionsModel::SpendZeroConfChange);
+    mapper->addMapping(ui->autoConvertRingCT, OptionsModel::AutoConvertRingCT);
+    mapper->addMapping(ui->autoConvertThreshold, OptionsModel::AutoConvertThreshold);
 
     /* Network */
     mapper->addMapping(ui->mapPortUpnp, OptionsModel::MapPortUPnP);

@@ -264,7 +264,7 @@
           <item>
            <widget class="QGroupBox" name="groupBox">
             <property name="title">
-             <string>Expert</string>
+             <string>Wallet options</string>
             </property>
             <layout class="QVBoxLayout" name="verticalLayout_2">
              <item>
@@ -297,6 +297,46 @@
                 <string>Enable Dark Theme</string>
                </property>
               </widget>
+             </item>
+             <item>
+              <widget class="QCheckBox" name="autoConvertRingCT">
+               <property name="toolTip">
+                <string>Automatically convert confirmed basecoin and CT balances to private RingCT in the background. Each conversion is a normal transaction that pays the standard fee and needs the wallet unlocked. Takes effect after a restart.</string>
+               </property>
+               <property name="text">
+                <string>Auto&amp;Convert funds to private (RingCT)</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <layout class="QHBoxLayout" name="horizontalLayout_AutoConvertThreshold">
+               <item>
+                <widget class="QLabel" name="autoConvertThresholdLabel">
+                 <property name="toolTip">
+                  <string>Wait until this much eligible balance has accumulated before creating an automatic conversion, so small amounts are not converted one at a time.</string>
+                 </property>
+                 <property name="text">
+                  <string>Convert once eligible balance reaches</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="BitcoinAmountField" name="autoConvertThreshold"/>
+               </item>
+               <item>
+                <spacer name="horizontalSpacer_AutoConvertThreshold">
+                 <property name="orientation">
+                  <enum>Qt::Horizontal</enum>
+                 </property>
+                 <property name="sizeHint" stdset="0">
+                  <size>
+                   <width>40</width>
+                   <height>20</height>
+                  </size>
+                 </property>
+                </spacer>
+               </item>
+              </layout>
              </item>
             </layout>
            </widget>
@@ -1182,6 +1222,12 @@
    <class>QValueComboBox</class>
    <extends>QComboBox</extends>
    <header>qt/qvaluecombobox.h</header>
+  </customwidget>
+  <customwidget>
+   <class>BitcoinAmountField</class>
+   <extends>QLineEdit</extends>
+   <header>qt/bitcoinamountfield.h</header>
+   <container>1</container>
   </customwidget>
  </customwidgets>
  <resources>

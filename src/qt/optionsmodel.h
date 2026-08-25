@@ -55,6 +55,8 @@ public:
         PruneSize,              // int
         DatabaseCache,          // int
         SpendZeroConfChange,    // bool
+        AutoConvertRingCT,      // bool
+        AutoConvertThreshold,   // qint64 (CAmount)
         Listen,                 // bool
         OptionIDRowCount,
         HideOrphans,         // bool
